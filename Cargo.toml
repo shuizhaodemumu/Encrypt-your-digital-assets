@@ -1,0 +1,36 @@
+[package]
+name = "offline-license-rust"
+version = "2.2.0"
+edition = "2021"
+
+[features]
+watchdog-test-mode = []
+office-state-compat = []
+
+[dependencies]
+anyhow = "1.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+base64 = "0.22"
+aes-gcm = "0.10"
+p256 = { version = "0.13", features = ["ecdsa", "pkcs8", "ecdh"] }
+rsa = { version = "0.9", features = ["sha2"] }
+hkdf = "0.12"
+sha2 = { version = "0.10", features = ["oid"] }
+md-5 = "0.10"
+rand = "0.8"
+uuid = { version = "1.0", features = ["serde", "v4"] }
+pkcs8 = { version = "0.10", features = ["encryption", "std"] }
+pkcs5 = { version = "0.7", features = ["pbes2", "alloc"] }
+zeroize = { version = "1.8", features = ["derive"] }
+libloading = "0.8"
+zip = { version = "0.6", default-features = false, features = ["deflate"] }
+encoding_rs = "0.8"
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "bmp", "tiff"] }
+windows-sys = { version = "0.52", features = ["Win32_Foundation", "Win32_Security", "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_WindowsAndMessaging", "Win32_UI_Controls", "Win32_UI_Controls_Dialogs", "Win32_UI_Shell", "Win32_Graphics_Gdi", "Win32_Security_Cryptography", "Win32_System_Memory", "Win32_System_Threading", "Win32_System_SystemInformation", "Win32_System_LibraryLoader", "Win32_System_Registry", "Win32_System_Com", "Win32_System_Ole", "Win32_System_Variant", "Win32_Storage_FileSystem"] }
+
+[profile.release]
+opt-level = 2
+lto = "thin"
+strip = true
+panic = "unwind"

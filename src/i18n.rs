@@ -1,0 +1,431 @@
+use anyhow::{Context, Result};
+use std::{
+    fs,
+    path::Path,
+    sync::atomic::{AtomicU8, Ordering},
+};
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Language {
+    Chinese,
+    English,
+}
+static LANGUAGE: AtomicU8 = AtomicU8::new(0);
+pub const CATALOGUE: &[(&str, &str)] = &[
+    ("离线文件授权 · Rust修复Office版", "Offline Media License · Rust"),
+    ("离线文件授权管理员 · Rust修复Office版", "Offline Media Packager · Rust"),
+    ("设备请求工具 · Rust修复Office版", "Device Request Tool · Rust"),
+    ("离线文件授权安装 · Rust修复Office版", "Offline Media Setup · Rust"),
+    ("{title} [测试构建：电脑重启已禁用]", "{title} [TEST BUILD: system restart disabled]"),
+    ("确定", "OK"),
+    ("取消", "Cancel"),
+    ("播放", "Play"),
+    ("暂停", "Pause"),
+    ("音量", "Volume"),
+    ("创建窗口失败", "Could not create the window"),
+    ("创建发行者密钥", "Create issuer key"),
+    ("恢复 / 解锁密钥", "Unlock issuer key"),
+    ("加密密钥备份", "Back up issuer key"),
+    ("导入并预览文件", "Import & preview"),
+    ("生成内容 EXE", "Build content EXE"),
+    ("选择已有内容包", "Select existing EXE"),
+    ("授权天数", "License days"),
+    ("导入设备识别码并签发", "Import device & issue license"),
+    ("设备请求工具", "Device request tool"),
+    ("请创建或解锁发行者密钥，随后导入文件。视频内容 EXE 默认全屏单个循环。", "Create or unlock an issuer key, then import a file. Licensed videos play full-screen in a single-file loop."),
+    ("选择收到的内容 EXE，导出加密设备信息；也可直接在内容 EXE 中获取设备识别码。", "Select the content EXE to export an encrypted device report, or export it from the content EXE itself."),
+    ("选择内容并导出设备信息", "Select EXE & export device report"),
+    ("本版独立安装。PPT 原文件由接收端 PowerPoint 放映；Word 静态转换需要管理员电脑安装 LibreOffice。", "This edition installs separately. PPT playback uses PowerPoint on the recipient PC; Word conversion requires LibreOffice on the administrator PC."),
+    ("安装 Rust 版", "Install Rust edition"),
+    ("请选择该设备的授权文件", "Select the license file for this device"),
+    ("{s}\n先获取本机设备识别码交给管理员，再导入收到的 .lic 文件。", "{s}\nExport this device's encrypted report to the administrator, then import the received .lic file."),
+    ("获取本机设备识别码", "Export device report"),
+    ("导入固态链密钥文件", "Import license file"),
+    ("开始放映", "Start slide show"),
+    ("上一页", "Previous"),
+    ("下一页", "Next"),
+    ("文本编码无法解码", "Could not decode the text encoding"),
+    ("图片超过 100 MP", "Image exceeds 100 megapixels"),
+    ("暂不支持此格式", "This format is not supported"),
+    ("此 PPT 需要安装并激活 Microsoft PowerPoint 桌面版，然后重新打开本程序；原授权仍保留。", "Install and activate desktop Microsoft PowerPoint, then reopen this EXE. Your existing license is retained."),
+    ("安装到本机", "Install on this PC"),
+    ("导入新授权", "Import new license"),
+    ("内容已激活，正在启动 PowerPoint 全屏放映；仅放映、不提供编辑和保存，按 Esc 结束本次放映。", "Activated. Starting a full-screen PowerPoint show without editing or saving controls. Press Esc to end this show."),
+    ("内容已激活，运行监测与登录自动启动已启用。视频自动全屏循环，授权到期停止。", "Activated. Runtime monitoring and login startup are enabled. Video loops full-screen and stops when the license expires."),
+    ("请先创建或解锁密钥", "Create or unlock an issuer key first"),
+    ("暂不支持内置查看此格式", "Built-in viewing is not supported for this format"),
+    ("文件为空", "The file is empty"),
+    ("请先安装并激活 Microsoft PowerPoint 桌面版，再导入 LIC。本次未使用或消耗授权文件。", "Install and activate desktop Microsoft PowerPoint before importing the LIC. This license has not been consumed."),
+    ("授权文件\0*.lic", "License files\0*.lic"),
+    ("请在内容程序中导入密钥", "Import the license in the content EXE"),
+    ("保存发行者加密密钥", "Save encrypted issuer key"),
+    ("发行者密钥\0*.issuerkey", "Issuer keys\0*.issuerkey"),
+    ("发行者密钥.issuerkey", "issuer-key.issuerkey"),
+    ("新密钥口令（至少 8 字符）", "New key password (at least 8 characters)"),
+    ("再次输入口令", "Confirm password"),
+    ("两次口令不一致", "The passwords do not match"),
+    ("加密密钥已创建，请立即备份。", "Encrypted issuer key created. Make a backup now."),
+    ("恢复 / 解锁发行者密钥", "Restore / unlock issuer key"),
+    ("密钥口令", "Key password"),
+    ("发行者已解锁：{}", "Issuer unlocked: {}"),
+    ("请先解锁密钥", "Unlock the issuer key first"),
+    ("保存加密备份", "Save encrypted backup"),
+    ("发行者备份.issuerkey", "issuer-backup.issuerkey"),
+    ("备份口令（至少 8 字符）", "Backup password (at least 8 characters)"),
+    ("备份指纹不一致", "Backup fingerprint mismatch"),
+    ("加密备份及公钥指纹校验成功。", "Encrypted backup saved and public-key fingerprint verified."),
+    ("支持的文件\0*.pdf;*.txt;*.png;*.jpg;*.mp4;*.mp3;*.wav;*.docx;*.pptx;*.doc;*.ppt;*.pps;*.ppsx\0所有文件\0*.*", "Supported files\0*.pdf;*.txt;*.png;*.jpg;*.mp4;*.mp3;*.wav;*.docx;*.pptx;*.doc;*.ppt;*.pps;*.ppsx\0All files\0*.*"),
+    ("PPT 原文件已载入，正在启动 PowerPoint 放映预览；生成 EXE 后需 LIC 授权。", "Original PPT loaded. Starting a PowerPoint preview. The generated EXE will require a LIC."),
+    ("PPT 原文件已载入，可直接加密生成 EXE；本机没有 PowerPoint，无法预览。接收端需安装 PowerPoint。", "Original PPT loaded and ready to package. Preview is unavailable without local PowerPoint. The recipient needs PowerPoint."),
+    ("预览已打开，请检查内容后生成 EXE。Word 仍转换为静态页面。", "Preview opened. Check the content before building an EXE. Word files are still converted to static pages."),
+    ("请先导入并预览文件", "Import and preview a file first"),
+    ("内容程序\0*.exe", "Content applications\0*.exe"),
+    ("不能覆盖原文件或管理员程序", "Cannot overwrite the input file or the administrator application"),
+    ("正在加密并构建 EXE…", "Encrypting content and building EXE..."),
+    ("PPT 原文件已加密生成 EXE。只发送 EXE；.olmeta 留在管理员端。接收端需安装 PowerPoint，LIC 验证后仅放映。", "Original PPT encrypted into an EXE. Send only the EXE; retain .olmeta on the administrator PC. The recipient needs PowerPoint and a valid LIC for playback."),
+    ("EXE 已生成。只发送 EXE；.olmeta 请保留备份。视频授权后全屏单个循环。", "EXE built. Send only the EXE and back up .olmeta. Licensed videos loop full-screen."),
+    ("选择已有内容 EXE", "Select existing content EXE"),
+    ("请选择新需求版生成的内容包；旧内容请重新打包", "Select a version 2 package; older content must be repackaged"),
+    ("选择该包的管理员记录", "Select the administrator record for this package"),
+    ("管理员记录\0*.olmeta", "Administrator records\0*.olmeta"),
+    ("管理记录与内容 EXE 不符", "Administrator record does not match this EXE"),
+    ("已有内容包及管理员记录已载入。", "Existing content package and administrator record loaded."),
+    ("请先生成或选择内容包", "Build or select a content package first"),
+    ("天数必须为正整数", "License days must be a positive integer"),
+    ("天数超出范围", "License days are out of range"),
+    ("导入加密设备识别码", "Import encrypted device report"),
+    ("加密设备信息\0*.json;*.josn\0旧版设备请求\0*.request", "Encrypted device reports\0*.json;*.josn\0Legacy requests\0*.request"),
+    ("完整设备信息已解密。绑定排除 USB 移动盘和网卡连接状态，其他硬件变化需要重新授权。", "Device report decrypted. USB removable disks and network connection state are excluded from binding; other hardware changes require a new license."),
+    ("保存授权文件", "Save license file"),
+    ("设备授权.lic", "device-license.lic"),
+    ("设备：{}\n授权 {days} 天，激活后开始计时。\n确认后开始连续 60 秒激活窗口。新授权不叠加旧期限。", "Device: {}\nLicense duration: {days} days from activation.\nConfirming starts a 60-second activation window. A new license replaces the previous term."),
+    ("立即签发", "Issue license now"),
+    ("授权已签发，请在 60 秒内导入。", "License issued. Import it within 60 seconds."),
+    ("选择收到的内容 EXE", "Select the received content EXE"),
+    ("请在内容程序中获取设备识别码", "Export the device report from the content EXE"),
+    ("正在采集并加密完整硬件信息，不采集 IP 地址、网关或 DNS…", "Collecting and encrypting hardware information. IP addresses, gateways and DNS are not collected..."),
+    ("旧内容需要在新需求版管理员中重新打包", "Older content must be repackaged by a version 2 administrator"),
+    ("保存加密设备识别码", "Save encrypted device report"),
+    ("加密设备信息\0*.json;*.josn", "Encrypted device reports\0*.json;*.josn"),
+    ("设备识别码.json", "device-report.json"),
+    ("加密设备信息已导出，请发给管理员，随后通过“导入固态链密钥文件”导入收到的 .lic。", "Encrypted device report exported. Send it to the administrator, then use Import license file to load the received .lic."),
+    ("第 {} / {} 页", "Page {} of {}"),
+    ("请先授权", "Activate the license first"),
+    ("授权已失效", "The license is no longer valid"),
+    ("本机未安装 PowerPoint，不能预览 PPT，但可以直接生成加密 EXE。", "PowerPoint is not installed locally. PPT preview is unavailable, but you can still build an encrypted EXE."),
+    ("正在启动 PowerPoint 放映预览。", "Starting a PowerPoint slide-show preview."),
+    ("请选择新的授权文件", "Select a new license file"),
+    ("已安装到 {}", "Installed to {}"),
+    ("本次 PPT 放映已结束，不计故障。点击“开始放映”可再次放映；授权到期后不能重新打开。", "The slide show ended normally. Use Start slide show to replay while the license remains valid."),
+    ("媒体无法解码，请检查格式或内容是否损坏", "Could not decode the media. Check the format and file integrity"),
+    ("Office 文件为空", "The Office file is empty"),
+    ("Office 文档不是有效 ZIP", "The Office document is not a valid ZIP archive"),
+    ("Office 文档结构无效", "Invalid Office document structure"),
+    ("DOC/PPT 文件头无效", "Invalid DOC/PPT file header"),
+    ("选择已安装 LibreOffice 的 soffice.exe", "Select soffice.exe from your LibreOffice installation"),
+    ("转换需要管理员电脑安装 LibreOffice", "Conversion requires LibreOffice on the administrator PC"),
+    ("正在通过 LibreOffice 转换为静态 PDF…", "Converting to a static PDF with LibreOffice..."),
+    ("Office 转换程序退出失败", "Office conversion process failed"),
+    ("Office 转换超时", "Office conversion timed out"),
+    ("Office 转换没有生成 PDF", "Office conversion did not produce a PDF"),
+    ("程序遇到内部异常，操作已停止。", "An internal error occurred. The operation was stopped."),
+    ("语言已切换，当前内容和授权状态保持不变。", "Language changed. Content and authorization remain unchanged."),
+    ("保存文件失败（{} -> {}）：{}", "Could not save file ({} -> {}): {}"),
+    ("保护数据过大", "Protected data exceeds the size limit"),
+    ("本地保护状态损坏或不属于当前 Windows 用户", "Local protected state is corrupted or belongs to another Windows user"),
+    ("无法读取 SMBIOS 硬件 UUID", "Could not read the SMBIOS hardware UUID"),
+    ("硬件信息读取失败", "Could not read hardware information"),
+    ("SMBIOS 数据损坏", "Corrupted SMBIOS data"),
+    ("主板 UUID 不可用", "Motherboard UUID is unavailable"),
+    ("内容密钥解封失败", "Could not unwrap the content key"),
+    ("无法锁定设备密钥存储", "Could not lock device-key storage"),
+    ("设备密钥正在初始化，请稍后再试", "Device key is being initialized; try again shortly"),
+    ("无法创建内容单实例锁", "Could not create the content instance lock"),
+    ("仅支持 PPT/PPTX/PPS/PPSX 放映，宏格式不支持", "Only PPT/PPTX/PPS/PPSX playback is supported; macro-enabled formats are unsupported"),
+    ("PPT 文件为空", "The PPT file is empty"),
+    ("PPTX 不是有效 ZIP 文件", "The PPTX file is not a valid ZIP archive"),
+    ("PPTX 结构无效", "Invalid PPTX structure"),
+    ("不接受带 VBA 宏的演示文件", "Presentations containing VBA macros are not accepted"),
+    ("PPT/PPS 文件头无效", "Invalid PPT/PPS file header"),
+    ("演示控制文件过大", "Presentation control file exceeds the size limit"),
+    ("目录名无效", "Invalid directory name"),
+    ("演示目录编号无效", "Invalid presentation directory identifier"),
+    ("演示临时目录越界", "Presentation temporary directory is outside the permitted location"),
+    ("演示目录不能是链接", "Presentation directory cannot be a symbolic link"),
+    ("此 PPT 需要接收端安装并激活 Microsoft PowerPoint 桌面版；WPS、网页版或 LibreOffice 不能替代此播放方式。", "The recipient must install and activate desktop Microsoft PowerPoint. WPS, web PowerPoint and LibreOffice cannot replace this playback mode."),
+    ("PPT 包扩展名无效", "Invalid presentation package extension"),
+    ("演示状态编号不匹配", "Presentation state identifier mismatch"),
+    ("PowerPoint 放映失败：{}", "PowerPoint slide show failed: {}"),
+    ("PowerPoint 放映控制进程异常退出", "PowerPoint slide-show controller exited unexpectedly"),
+    ("PowerPoint 放映控制进程未响应", "PowerPoint slide-show controller is not responding"),
+    ("PowerPoint 未能启动，请检查安装、激活和文件权限", "PowerPoint could not start. Check installation, activation and file permissions"),
+    ("PowerPoint 启动超时，请检查是否有激活或文件密码提示", "PowerPoint startup timed out. Check for activation or document-password prompts"),
+    ("授权控制已停止", "Authorization control has stopped"),
+    ("PowerPoint 没有以只读方式打开", "PowerPoint did not open the file read-only"),
+    ("演示文件名无效", "Invalid presentation filename"),
+    ("无法唯一识别本次放映窗口", "Could not uniquely identify the current slide-show window"),
+    ("未找到本次放映窗口", "The current slide-show window was not found"),
+    ("PowerPoint 未建立放映窗口", "PowerPoint did not create a slide-show window"),
+    ("放映窗口进程无效", "Invalid slide-show window process"),
+    ("无法绑定本次放映窗口", "Could not bind the current slide-show window"),
+    ("演示请求无效", "Invalid presentation request"),
+    ("演示请求已停止", "Presentation request has stopped"),
+    ("PowerPoint 进程异常退出", "PowerPoint exited unexpectedly"),
+    ("本次 PowerPoint 放映窗口已改变", "The current PowerPoint slide-show window has changed"),
+    ("PowerPoint 放映窗口未响应", "PowerPoint slide-show window is not responding"),
+    ("未激活", "Not activated"),
+    ("授权已停止", "Authorization has stopped"),
+    ("检测到时间回拨", "System clock rollback detected"),
+    ("使用期限已结束", "The license term has ended"),
+    ("本地授权已锁定，请申请新授权", "Local authorization is locked; request a new license"),
+    ("此授权已使用，不能重置期限", "This license has already been used; its term cannot be reset"),
+    ("授权已使用", "This license has already been used"),
+    ("密钥无效", "Invalid key"),
+    ("授权线程状态异常", "Authorization thread state error"),
+    ("运行库包含非法路径", "Runtime archive contains an invalid path"),
+    ("播放器初始化失败", "Could not initialize the media runtime"),
+    ("播放器读取接口初始化失败", "Could not initialize the media reader"),
+    ("播放器创建失败", "Could not create the media player"),
+    ("媒体播放失败", "Media playback failed"),
+    ("播放失败", "Playback failed"),
+    ("PDF 超过 4 GiB", "PDF exceeds 4 GiB"),
+    ("PDF 无法打开，可能损坏或带密码", "Could not open PDF; it may be corrupted or password-protected"),
+    ("PDF 没有页面", "The PDF has no pages"),
+    ("PDF 页码无效", "Invalid PDF page number"),
+    ("PDF 页面无法读取", "Could not read the PDF page"),
+    ("PDF 页面尺寸无效", "Invalid PDF page dimensions"),
+    ("PDF 渲染内存分配失败", "Could not allocate PDF rendering memory"),
+    ("文件大小超出限制", "File size exceeds the limit"),
+    ("文件过大", "The file exceeds the size limit"),
+    ("硬件 UUID 格式无效", "Invalid hardware UUID format"),
+    ("硬件 UUID 无效", "Invalid hardware UUID"),
+    ("授权天数必须为正整数", "License days must be a positive integer"),
+    ("授权日期溢出", "License date overflow"),
+    ("授权日期超出范围", "License date is out of range"),
+    ("授权版本或编号无效", "Invalid license version or identifier"),
+    ("设备编号无效", "Invalid device identifier"),
+    ("发行者指纹无效", "Invalid issuer fingerprint"),
+    ("包装密钥无效", "Invalid wrapped key"),
+    ("激活窗口无效", "Invalid activation window"),
+    ("发行者指纹不符", "Issuer fingerprint mismatch"),
+    ("授权格式无效", "Invalid license format"),
+    ("授权签名无效", "Invalid license signature"),
+    ("授权协议版本与内容包不一致", "License protocol version does not match the content package"),
+    ("授权不属于该内容", "The license is not for this content"),
+    ("授权不属于该设备", "The license is not for this device"),
+    ("授权签发时间在未来", "The license issue time is in the future"),
+    ("授权超过 60 秒激活窗口，请重新签发", "The 60-second activation window has expired; issue a new license"),
+    ("本地授权状态损坏", "Local authorization state is corrupted"),
+    ("检测到时间回拨，请校准时间并申请新授权", "Clock rollback detected; correct the clock and request a new license"),
+    ("使用期限已结束，请申请新授权", "The license term has ended; request a new license"),
+    ("密钥文件过大", "Key file exceeds the size limit"),
+    ("密钥口令错误或文件损坏", "Incorrect key password or corrupted key file"),
+    ("口令至少 8 个字符", "Password must contain at least 8 characters"),
+    ("包记录加密失败", "Could not encrypt the package record"),
+    ("包记录过大", "Package record exceeds the size limit"),
+    ("管理员记录无效", "Invalid administrator record"),
+    ("记录不属于当前发行者或已损坏", "The record belongs to another issuer or is corrupted"),
+    ("包记录无效", "Invalid package record"),
+    ("设备请求无效", "Invalid device request"),
+    ("设备 RSA 公钥须为 3072 位", "Device RSA public key must be 3072 bits"),
+    ("设备请求与内容包版本不一致", "Device request version does not match the content package"),
+    ("日期溢出", "Date overflow"),
+    ("此程序没有内容包", "This application has no content package"),
+    ("内容 EXE 格式无效", "Invalid content EXE format"),
+    ("内容包偏移无效", "Invalid content package offset"),
+    ("内容包头无效", "Invalid content package header"),
+    ("包头长度无效", "Invalid package header length"),
+    ("内容包参数无效", "Invalid content package parameters"),
+    ("不支持的查看格式", "Unsupported viewing format"),
+    ("硬件绑定策略无效", "Invalid hardware-binding policy"),
+    ("内容包截断或长度不符", "Content package is truncated or has an inconsistent length"),
+    ("内容密钥无效", "Invalid content key"),
+    ("内容密文校验失败", "Encrypted content authentication failed"),
+    ("无效定位", "Invalid seek position"),
+    ("内容超过查看大小限制", "Content exceeds the viewing size limit"),
+    ("内容读取不完整", "Content read was incomplete"),
+    ("内容加密失败", "Content encryption failed"),
+    ("输入文件已变化", "The input file changed during packaging"),
+    ("不能覆盖管理程序", "Cannot overwrite the administrator application"),
+    ("硬件查询超时，请检查 Windows WMI 服务", "Hardware query timed out; check the Windows WMI service"),
+    ("硬件查询线程异常", "Hardware query thread failed"),
+    ("硬件查询失败：{}", "Hardware query failed: {}"),
+    ("硬件信息格式无效", "Invalid hardware information format"),
+    ("硬件记录过多", "Too many hardware records"),
+    ("硬件字段不完整或包含非硬件字段", "Hardware fields are incomplete or contain unrelated fields"),
+    ("硬件字段过长", "Hardware field exceeds the size limit"),
+    ("关键硬件信息缺失", "Required hardware information is missing"),
+    ("主板 UUID 无效", "Invalid motherboard UUID"),
+    ("不支持的硬件绑定策略", "Unsupported hardware-binding policy"),
+    ("无法生成设备信息加密密钥", "Could not generate the device-report encryption key"),
+    ("设备信息密钥派生失败", "Could not derive the device-report key"),
+    ("旧内容包不支持新设备信息流程，请重新打包", "Older packages do not support this device-report workflow; repackage the content"),
+    ("缺少完整硬件信息", "Complete hardware information is missing"),
+    ("设备信息加密失败", "Could not encrypt device information"),
+    ("设备信息不属于当前内容包", "Device information is not for the current package"),
+    ("发行者设备加密密钥不符", "Issuer device-encryption key mismatch"),
+    ("设备信息随机数无效", "Invalid device-report nonce"),
+    ("设备信息过大", "Device information exceeds the size limit"),
+    ("设备信息无法解密，文件已损坏或发行者密钥不匹配", "Could not decrypt device information; the file is corrupted or the issuer key does not match"),
+    ("设备信息上下文无效", "Invalid device-information context"),
+    ("硬件信息与设备识别码不一致", "Hardware information does not match the device identifier"),
+    ("设备信息文件过大", "Device report file exceeds the size limit"),
+    ("请保留原文件并保存为新 EXE", "Keep the original file and save to a new EXE"),
+    ("旧版内容需要在新需求版管理员中重新打包，不能只替换查看器", "Older content must be repackaged; replacing only the viewer is not sufficient"),
+    ("迁移后的密文不一致", "Encrypted content differs after migration"),
+    ("命令参数数量不正确", "Incorrect number of command arguments"),
+    ("运行监测仅支持内容 EXE", "Runtime monitoring requires a content EXE"),
+    ("监测参数无效", "Invalid monitoring arguments"),
+    ("用法：--enroll 内容EXE 输出.json", "Usage: --enroll content.exe output.json"),
+    ("请选择内容EXE", "Select a content EXE"),
+    ("设备请求已导出", "Device request exported"),
+    ("输入文件必须有受支持的扩展名", "Input file must have a supported extension"),
+    ("CLI 不支持该格式，请使用界面转换", "This format is not supported by the CLI; use the interface for conversion"),
+    ("请选择新需求版生成的内容包", "Select a version 2 content package"),
+    ("内容记录不一致", "Content record mismatch"),
+    ("是否同时删除本地授权数据？", "Also remove local authorization data?"),
+    ("卸载 Rust 版", "Uninstall Rust edition"),
+    ("旧版内容请用原版程序打开，或重新打包为完整硬件绑定版本", "Open legacy content with its original application, or repackage it for full hardware binding"),
+    ("安装编号无效", "Invalid installation identifier"),
+    ("创建快捷方式失败", "Could not create the shortcut"),
+    ("安装记录写入失败", "Could not write the installation record"),
+    ("运行监测编号无效", "Invalid runtime monitor identifier"),
+    ("Windows 拒绝重启请求", "Windows rejected the restart request"),
+    ("无法停止故障内容程序", "Could not stop the failed content application"),
+    ("无法设置登录自动启动", "Could not configure login startup"),
+    ("无法写入登录启动项", "Could not write the login startup entry"),
+];
+pub fn current() -> Language {
+    if LANGUAGE.load(Ordering::Relaxed) == 1 {
+        Language::English
+    } else {
+        Language::Chinese
+    }
+}
+fn preferred(file: &Path) -> Language {
+    if fs::metadata(file).map(|m| m.len() > 32).unwrap_or(true) {
+        return Language::Chinese;
+    }
+    match fs::read_to_string(file).ok().as_deref().map(str::trim) {
+        Some("en") => Language::English,
+        _ => Language::Chinese,
+    }
+}
+pub fn init() {
+    LANGUAGE.store(
+        if preferred(&crate::platform::root().join("ui-language.txt")) == Language::English {
+            1
+        } else {
+            0
+        },
+        Ordering::Relaxed,
+    );
+}
+fn save(file: &Path, language: Language) -> Result<()> {
+    fs::create_dir_all(
+        file.parent()
+            .context("Invalid language preference directory")?,
+    )?;
+    let temp = file.with_extension(format!("{}.tmp", uuid::Uuid::new_v4()));
+    fs::write(
+        &temp,
+        if language == Language::English {
+            "en"
+        } else {
+            "zh"
+        },
+    )?;
+    let result = crate::platform::replace_file(&temp, file);
+    if result.is_err() {
+        let _ = fs::remove_file(&temp);
+    }
+    result
+}
+pub fn select(language: Language) -> Result<()> {
+    save(&crate::platform::root().join("ui-language.txt"), language)?;
+    LANGUAGE.store(
+        if language == Language::English { 1 } else { 0 },
+        Ordering::Relaxed,
+    );
+    Ok(())
+}
+pub fn in_language(value: &str, language: Language) -> &str {
+    CATALOGUE
+        .iter()
+        .find(|(zh, _)| *zh == value)
+        .map(|(zh, en)| {
+            if language == Language::English {
+                *en
+            } else {
+                *zh
+            }
+        })
+        .unwrap_or(value)
+}
+pub fn text(value: &str) -> &str {
+    in_language(value, current())
+}
+pub fn caption(value: &str) -> &str {
+    CATALOGUE
+        .iter()
+        .find(|(zh, en)| *zh == value || *en == value)
+        .map(|(zh, en)| {
+            if current() == Language::English {
+                *en
+            } else {
+                *zh
+            }
+        })
+        .unwrap_or(value)
+}
+#[macro_export]
+macro_rules! tr_format {
+    ($zh:literal, $en:literal $(, $($args:tt)*)?) => {
+        match $crate::i18n::current() {
+            $crate::i18n::Language::Chinese => format!($zh $(, $($args)*)?),
+            $crate::i18n::Language::English => format!($en $(, $($args)*)?),
+        }
+    };
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn catalogue_has_unique_keys_and_english_values() {
+        let mut keys = std::collections::HashSet::new();
+        for (zh, en) in CATALOGUE {
+            assert!(keys.insert(zh), "Duplicate translation key");
+            assert!(!en.is_empty());
+            assert!(
+                !en.chars().any(|c| ('\u{4e00}'..='\u{9fff}').contains(&c)),
+                "Untranslated English value"
+            );
+        }
+    }
+    #[test]
+    fn user_content_is_never_rewritten() {
+        let filename = "客户视频-授权文件.mp4";
+        assert_eq!(in_language(filename, Language::English), filename);
+        assert_eq!(
+            in_language("创建发行者密钥", Language::English),
+            "Create issuer key"
+        );
+        assert_eq!(
+            in_language("创建发行者密钥", Language::Chinese),
+            "创建发行者密钥"
+        );
+    }
+    #[test]
+    fn language_preference_round_trip_and_invalid_fallback() {
+        let folder = std::env::temp_dir().join(format!("offline-i18n-{}", uuid::Uuid::new_v4()));
+        let file = folder.join("language.txt");
+        assert_eq!(preferred(&file), Language::Chinese);
+        save(&file, Language::English).unwrap();
+        assert_eq!(preferred(&file), Language::English);
+        save(&file, Language::Chinese).unwrap();
+        assert_eq!(preferred(&file), Language::Chinese);
+        fs::write(&file, "invalid").unwrap();
+        assert_eq!(preferred(&file), Language::Chinese);
+        fs::remove_file(file).unwrap();
+        fs::remove_dir(folder).unwrap();
+    }
+}

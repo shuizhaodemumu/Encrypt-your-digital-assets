@@ -1,0 +1,11 @@
+import fs from 'node:fs';
+const root = new URL('../', import.meta.url);
+const dictionary = JSON.parse(fs.readFileSync(new URL('build/translations.json', root), 'utf8'));
+const catalogue = Object.entries(dictionary).map(([zh,en]) => `    ("${zh}", "${en}"),`).join('\n');
+const file = new URL('src/i18n.rs', root);
+const source = fs.readFileSync(file,'utf8');
+const start = source.indexOf('pub const CATALOGUE:');
+const end = source.indexOf('\n];', start) + 3;
+if(start < 0 || end < 3) throw Error('Catalogue boundaries not found');
+fs.writeFileSync(file, source.slice(0,start) + `pub const CATALOGUE: &[(&str, &str)] = &[\n${catalogue}\n];` + source.slice(end));
+console.log('Catalogue entries:', Object.keys(dictionary).length);
