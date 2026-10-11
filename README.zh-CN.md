@@ -4,6 +4,8 @@
 
 Windows 桌面软件，将音频、视频及文档加密打包为独立 EXE，通过设备绑定和离线 LIC 授权控制使用。**2.2.0** 在 Rust 修复 Office 版 2.1.1 的基础上加入中英文界面。
 
+[下载 Windows x64 成品程序包](https://github.com/shuizhaodemumu/offline-media-license-rust/releases/tag/v2.2.0)，解压 ZIP 后运行 `Packager.exe`，使用成品无需安装 Rust。包内同时提供设备工具、安装入口和已有内容升级工具。
+
 ## 主要功能
 
 - **音视频加密**：分块 AES-256-GCM 加密，LibVLC 通过受控解密流读取媒体；视频授权后无边框全屏、隐藏控件、单个循环播放，到期停止。循环改为引擎内部回放，保持视频输出窗口；播放画布与全屏底色改为黑色，减少结束后重播时的闪白和停顿。

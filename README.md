@@ -4,6 +4,8 @@
 
 Windows desktop software for packaging audio, video and documents into encrypted standalone EXEs with offline, hardware-bound licensing. Version **2.2.0** adds Chinese / English menus, dialogs, status messages and validation errors to the Rust 2.1.1 Office edition.
 
+[Download the Windows x64 application bundle](https://github.com/shuizhaodemumu/offline-media-license-rust/releases/tag/v2.2.0). Extract the ZIP and run `Packager.exe`; a Rust installation is not needed to use these prebuilt applications. The bundle also includes the device tool, installer and existing-content updater.
+
 ## Features
 
 - **Video and audio encryption:** chunked AES-256-GCM encryption; licensed media is read through the decrypted stream by LibVLC. Videos play full-screen without controls and loop one file until the license expires. Native input repetition retains the video output across loop boundaries; the video canvas and fullscreen background are black.
