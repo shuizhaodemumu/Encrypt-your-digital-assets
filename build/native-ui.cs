@@ -1,5 +1,6 @@
 using System;using System.Runtime.InteropServices;using System.Text;using System.Collections.Generic;
 public static class SmokeWindows {
+ [DllImport("user32.dll")]public static extern IntPtr GetParent(IntPtr h);
  [DllImport("user32.dll")]public static extern bool IsWindowVisible(IntPtr h);
  [DllImport("user32.dll",CharSet=CharSet.Unicode)]public static extern IntPtr GetProp(IntPtr h,string name);
  [DllImport("user32.dll",CharSet=CharSet.Unicode)]public static extern bool SetProp(IntPtr h,string name,IntPtr value);

@@ -104,6 +104,8 @@ pub struct DeviceRequest {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "PascalCase", deny_unknown_fields)]
 pub struct PackageInfo {
+    #[serde(default)]
+    pub custom_activation_window: bool,
     pub version: i32,
     pub content_id: Uuid,
     pub issuer_fingerprint: String,
@@ -191,7 +193,8 @@ pub fn validate_body(b: &LicenseBody) -> Result<()> {
     ensure!(
         b.activate_before_utc_seconds
             .checked_sub(b.issued_at_utc_seconds)
-            == Some(60),
+            .is_some_and(|seconds| seconds > 0)
+            && b.activate_before_utc_seconds <= 253402300799,
         crate::i18n::text("激活窗口无效")
     );
     expiry(b.issued_at_utc_seconds, b.days)?;
@@ -235,7 +238,7 @@ pub fn activate(s: SignedLicense, b: &LicenseBody, time: i64) -> Result<Activati
     );
     ensure!(
         time < b.activate_before_utc_seconds,
-        crate::i18n::text("授权超过 60 秒激活窗口，请重新签发")
+        crate::i18n::text("授权已超过首次导入窗口，请管理员重新签发")
     );
     Ok(ActivationRecord {
         license: s,
@@ -405,7 +408,34 @@ pub fn issue(
     days: i32,
     time: i64,
 ) -> Result<SignedLicense> {
+    issue_with_window(issuer, c, r, days, 60, time)
+}
+pub fn activation_deadline(time: i64, seconds: i64) -> Result<i64> {
+    ensure!(seconds > 0, crate::i18n::text("首次导入窗口必须大于零"));
+    let end = time
+        .checked_add(seconds)
+        .context(crate::i18n::text("首次导入窗口数值过大"))?;
+    ensure!(
+        (-62135596800..=253402300799).contains(&time) && end <= 253402300799,
+        crate::i18n::text("首次导入窗口日期超出范围")
+    );
+    Ok(end)
+}
+pub fn issue_with_window(
+    issuer: &Issuer,
+    c: &Catalog,
+    r: &DeviceRequest,
+    days: i32,
+    window_seconds: i64,
+    time: i64,
+) -> Result<SignedLicense> {
     expiry(time, days)?;
+    let deadline = activation_deadline(time, window_seconds)?;
+    expiry(deadline - 1, days)?;
+    ensure!(
+        c.info.custom_activation_window || window_seconds == 60,
+        crate::i18n::text("此内容由旧版打包，仅支持60秒。自定义窗口请重新打包原文件。")
+    );
     ensure!(
         r.version == c.info.version,
         crate::i18n::text("设备请求与内容包版本不一致")
@@ -420,9 +450,7 @@ pub fn issue(
         issuer_fingerprint: c.info.issuer_fingerprint.clone(),
         device_id: r.device_id.clone(),
         issued_at_utc_seconds: time,
-        activate_before_utc_seconds: time
-            .checked_add(60)
-            .context(crate::i18n::text("日期溢出"))?,
+        activate_before_utc_seconds: deadline,
         days,
         wrapped_content_key: b64(&wrapped),
     })
@@ -662,6 +690,7 @@ mod tests {
         let issuer = Issuer::create()?;
         let spki = issuer.spki()?;
         let info = PackageInfo {
+            custom_activation_window: true,
             version: 1,
             content_id: Uuid::new_v4(),
             issuer_fingerprint: fingerprint(&spki),
@@ -721,6 +750,30 @@ mod tests {
         let lic = issue(&issuer, &catalog, &device.request()?, 180, now())?;
         let body = verify(&lic, &info, &device.id)?;
         assert_eq!(device.unwrap(&body.wrapped_content_key)?.as_slice(), key);
+        for window in [1, 600, 86400] {
+            let issued = now();
+            let custom =
+                issue_with_window(&issuer, &catalog, &device.request()?, 180, window, issued)?;
+            let custom_body = verify(&custom, &info, &device.id)?;
+            assert_eq!(custom_body.activate_before_utc_seconds - issued, window);
+            assert!(activate(custom.clone(), &custom_body, issued + window - 1).is_ok());
+            assert!(activate(custom.clone(), &custom_body, issued + window).is_err());
+            let mut changed_body = custom_body;
+            changed_body.activate_before_utc_seconds += 1;
+            let mut forged = custom;
+            forged.body_base64 = b64(&encode(&changed_body)?);
+            assert!(verify(&forged, &info, &device.id).is_err());
+        }
+        let mut legacy = catalog.clone();
+        legacy.info.custom_activation_window = false;
+        assert!(issue_with_window(&issuer, &legacy, &device.request()?, 180, 600, now()).is_err());
+        assert!(issue_with_window(&issuer, &legacy, &device.request()?, 180, 60, now()).is_ok());
+        let mut legacy_json = serde_json::to_value(&info)?;
+        legacy_json
+            .as_object_mut()
+            .unwrap()
+            .remove("CustomActivationWindow");
+        assert!(!serde_json::from_value::<PackageInfo>(legacy_json)?.custom_activation_window);
         assert!(verify(&lic, &info, "wrong-device").is_err());
         let mut changed = lic.clone();
         let mut signature = unb64(&changed.signature_base64)?;
@@ -807,6 +860,33 @@ mod tests {
                 ok
             );
         }
+        for seconds in [1, 60, 90, 3600, 86400, 30 * 86400] {
+            let mut custom = b.clone();
+            custom.activate_before_utc_seconds =
+                activation_deadline(custom.issued_at_utc_seconds, seconds).unwrap();
+            assert!(validate_body(&custom).is_ok());
+            assert!(activate(
+                s.clone(),
+                &custom,
+                custom.issued_at_utc_seconds + seconds - 1
+            )
+            .is_ok());
+            assert!(activate(s.clone(), &custom, custom.issued_at_utc_seconds + seconds).is_err());
+            let record = activate(
+                s.clone(),
+                &custom,
+                custom.issued_at_utc_seconds + seconds - 1,
+            )
+            .unwrap();
+            assert_eq!(
+                record.expires_at_utc_seconds,
+                record.activated_at_utc_seconds + 180 * 86400
+            );
+        }
+        for seconds in [0, -1, i64::MAX] {
+            assert!(activation_deadline(b.issued_at_utc_seconds, seconds).is_err());
+        }
+        assert!(activation_deadline(253402300799, 1).is_err());
     }
 }
 

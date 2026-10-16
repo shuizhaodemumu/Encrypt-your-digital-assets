@@ -1,0 +1,13 @@
+{
+  "asset": "assets/dragon-side.png",
+  "source": {
+    "file": "02-白鳞龙角半身像.png",
+    "title": "白鳞龙角半身像",
+    "source": "https://xn--pssy23gqgbz2d718b.com/works/gpt202610120003.html",
+    "image_url": "https://raw.githubusercontent.com/lmy414/ai-girl-stickers/main/dist/submissions/originals/gpt/5442d334799d7b68.png",
+    "width": 1536,
+    "height": 1536,
+    "sha256": "5442D334799D7B681B59BBBB0D19FB7A7B18CF909B6D091FBE1C4BD42F172E75"
+  },
+  "adopted": "User-supplied reference image, displayed with runtime feathered alpha. No successful new H3 generation in 2.4.2/2.4.3."
+}

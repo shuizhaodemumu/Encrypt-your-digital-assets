@@ -10,6 +10,23 @@ use windows_sys::Win32::{Foundation::*, System::Registry::*};
 fn root() -> PathBuf {
     crate::platform::root().join("apps")
 }
+pub fn install_content_for_startup(source: &Path, info: &PackageInfo) -> Result<PathBuf> {
+    let dir = root().join(format!("content-{}", info.content_id.simple()));
+    fs::create_dir_all(&dir)?;
+    let target = dir.join("Content.exe");
+    if fs::canonicalize(source).ok() != fs::canonicalize(&target).ok() {
+        let temp = target.with_extension("new");
+        fs::copy(source, &temp)?;
+        crate::platform::replace_file(&temp, &target)?;
+    }
+    ensure!(
+        Package::open_exe(&target)?.info == *info,
+        "自动启动副本校验失败"
+    );
+    // Resolve virtualized AppData while still running inside the current host.
+    // A shell logon process must receive the real filesystem path.
+    crate::platform::shell_path(&target)
+}
 pub fn install(source: &Path, info: Option<&PackageInfo>) -> Result<PathBuf> {
     let id = info
         .map(|i| format!("content-{}", i.content_id.simple()))

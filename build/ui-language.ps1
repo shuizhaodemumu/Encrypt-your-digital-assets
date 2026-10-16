@@ -3,7 +3,9 @@ $ErrorActionPreference='Stop'
 $taskRoot=Split-Path $PSScriptRoot -Parent
 if(-not $Executable){$Executable=Join-Path $taskRoot 'target\debug\offline-license-rust.exe'}
 . (Join-Path $PSScriptRoot 'ui-common.ps1')
-$taskPreference=Join-Path $env:LOCALAPPDATA 'OfflineLicenseBilingualRust\ui-language.txt'
+$taskPreference=Join-Path $env:LOCALAPPDATA 'OfflineLicenseVlcRust\ui-language.txt'
+$taskSettings=Join-Path $env:LOCALAPPDATA 'OfflineLicenseVlcRust\issuer-settings.json'
+$taskOriginalSettings=if(Test-Path -LiteralPath $taskSettings){[IO.File]::ReadAllBytes($taskSettings)}else{$null}
 $taskOriginalPreference=if(Test-Path -LiteralPath $taskPreference){[IO.File]::ReadAllBytes($taskPreference)}else{$null}
 $taskWorkspace=Join-Path $taskRoot ('work\ui-language-'+[guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $taskWorkspace -Force | Out-Null
@@ -11,7 +13,7 @@ $taskChildren=[Collections.Generic.List[Diagnostics.Process]]::new()
 function Start-TestApp([string]$taskPath,[string[]]$taskArgs=@()){
     $taskApp=if($taskArgs.Count){Start-Process -FilePath $taskPath -ArgumentList $taskArgs -WindowStyle Hidden -PassThru}else{Start-Process -FilePath $taskPath -WindowStyle Hidden -PassThru}
     $taskChildren.Add($taskApp)
-    $taskWindow=Window $taskApp 'RustOfflineWindow' '*'
+    $taskWindow=Window $taskApp 'RustVlcOfflineWindow' '*'
     if([SmokeWindows]::Text($taskWindow) -notlike '*TEST BUILD*' -and [SmokeWindows]::Text($taskWindow) -notlike '*测试构建*'){throw 'UI acceptance requires watchdog-test-mode; no production viewer is tested.'}
     return @($taskApp,$taskWindow)
 }
@@ -59,23 +61,9 @@ try{
     for($taskAttempt=0;$taskAttempt -lt 100 -and -not(Test-Path -LiteralPath $taskKey);$taskAttempt++){Start-Sleep -Milliseconds 100}
     if(-not(Test-Path -LiteralPath $taskKey)){throw 'Fixture issuer key was not created'}
     Write-Output 'ENGLISH_FILE_DIALOG_AND_PASSWORD_PROMPTS_PASS'
-    Click (Button $taskWindow 'Import device & issue license')
-    $taskErrorDialog=Window $taskApp '#32770' 'Offline Media License*'
-    if(-not([SmokeWindows]::Children($taskErrorDialog)|Where-Object{[SmokeWindows]::Text($_) -eq 'Build or select a content package first'})){throw 'English validation error was not shown'}
-    $taskErrorOk=$null
-    for($taskAttempt=0;$taskAttempt -lt 50 -and -not $taskErrorOk;$taskAttempt++){
-        $taskErrorOk=[SmokeWindows]::Children($taskErrorDialog)|Where-Object{[SmokeWindows]::Class($_) -eq 'Button'}|Select-Object -First 1
-        if(-not $taskErrorOk){Start-Sleep -Milliseconds 100}
-    }
-    if(-not $taskErrorOk){
-        [SmokeWindows]::Children($taskErrorDialog)|ForEach-Object{Write-Output ('DIALOG_CONTROL: '+[SmokeWindows]::Class($_)+' / '+[SmokeWindows]::GetDlgCtrlID($_)+' / '+[SmokeWindows]::Text($_))}
-        throw 'Validation dialog OK button was not created'
-    }
-    Click $taskErrorOk
-    for($taskAttempt=0;$taskAttempt -lt 50 -and [SmokeWindows]::IsWindowVisible($taskErrorDialog);$taskAttempt++){Start-Sleep -Milliseconds 100}
-    if([SmokeWindows]::IsWindowVisible($taskErrorDialog)){throw 'Validation message box did not close'}
-    Start-Sleep -Milliseconds 150
-    Write-Output 'ENGLISH_VALIDATION_ERROR_PASS'
+    $issueButton=Button $taskWindow 'Import device & issue license'
+    if([Windows.Automation.AutomationElement]::FromHandle($issueButton).Current.IsEnabled){throw 'Issuing without a content package should be disabled'}
+    Write-Output 'ISSUANCE_PREREQUISITE_DISABLED_PASS'
     $taskText=Join-Path $taskWorkspace '用户文档.txt'
     [IO.File]::WriteAllText($taskText,'客户视频-授权文件.mp4 / Create issuer key')
     Click (Button $taskWindow 'Import & preview')
@@ -88,7 +76,7 @@ try{
     if([SmokeWindows]::Text($taskDocument) -ne $taskContent){throw 'Language switch rewrote user document'}
     Language $taskWindow $true
     Write-Output 'USER_CONTENT_AND_PREVIEW_PRESERVED_PASS'
-    if(-not $VideoFixture){$VideoFixture=Join-Path (Split-Path $taskRoot -Parent) 'work\sample.mp4'}
+    if(-not $VideoFixture){$VideoFixture=Join-Path $taskRoot 'work\sample.mp4'}
     if(Test-Path -LiteralPath $VideoFixture){
         Click (Button $taskWindow 'Import & preview')
         FileDialog $taskApp ([IO.Path]::GetFullPath($VideoFixture))
@@ -139,6 +127,7 @@ try{
     Write-Output 'RECIPIENT_ACTIVATION_BILINGUAL_PASS'
     Write-Output 'NO_REAL_LICENSE_ACTIVATION_INSTALL_STARTUP_OR_REBOOT_PERFORMED'
 }finally{
+    if($null -ne $taskOriginalSettings){[IO.File]::WriteAllBytes($taskSettings,$taskOriginalSettings)}elseif(Test-Path -LiteralPath $taskSettings){Remove-Item -LiteralPath $taskSettings}
     foreach($taskProcess in $taskChildren){if(-not $taskProcess.HasExited){$taskProcess.Kill();$taskProcess.WaitForExit()}}
     if($null -ne $taskOriginalPreference){[IO.File]::WriteAllBytes($taskPreference,$taskOriginalPreference)}elseif(Test-Path -LiteralPath $taskPreference){Remove-Item -LiteralPath $taskPreference}
 }

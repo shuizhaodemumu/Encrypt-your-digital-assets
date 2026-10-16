@@ -702,6 +702,7 @@ mod tests {
         let public = issuer.spki()?;
         let key = random::<32>();
         let info = PackageInfo {
+            custom_activation_window: true,
             version: 2,
             content_id: uuid::Uuid::new_v4(),
             issuer_fingerprint: fingerprint(&public),

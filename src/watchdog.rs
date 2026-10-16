@@ -434,8 +434,12 @@ fn startup_name(info: &PackageInfo) -> String {
     )
 }
 pub fn enable_startup(exe: &Path, info: &PackageInfo) -> Result<PathBuf> {
-    let target = crate::install::install(exe, Some(info))?;
+    let target = crate::install::install_content_for_startup(exe, info)?;
     let command = format!("\"{}\" --autostart", target.display());
+    ensure!(
+        command.encode_utf16().count() <= 260,
+        "自动启动路径过长，请选择较短的用户数据目录"
+    );
     let data = platform::wide(&command);
     unsafe {
         let mut key = 0;
@@ -446,13 +450,32 @@ pub fn enable_startup(exe: &Path, info: &PackageInfo) -> Result<PathBuf> {
                 0,
                 std::ptr::null_mut(),
                 0,
-                KEY_SET_VALUE,
+                KEY_SET_VALUE | KEY_QUERY_VALUE,
                 std::ptr::null(),
                 &mut key,
                 std::ptr::null_mut()
             ) == 0,
             crate::i18n::text("无法设置登录自动启动")
         );
+        // A process started by Run should not rewrite its own unchanged Run
+        // value. Validate existing registration, then update only if needed.
+        let mut existing = vec![0u16; data.len()];
+        let mut existing_bytes = (existing.len() * 2) as u32;
+        let mut existing_kind = 0;
+        if RegQueryValueExW(
+            key,
+            platform::wide(&startup_name(info)).as_ptr(),
+            std::ptr::null_mut(),
+            &mut existing_kind,
+            existing.as_mut_ptr().cast(),
+            &mut existing_bytes,
+        ) == 0
+            && existing_kind == REG_SZ
+            && existing == data
+        {
+            RegCloseKey(key);
+            return Ok(target);
+        }
         let result = RegSetValueExW(
             key,
             platform::wide(&startup_name(info)).as_ptr(),
@@ -461,8 +484,26 @@ pub fn enable_startup(exe: &Path, info: &PackageInfo) -> Result<PathBuf> {
             data.as_ptr().cast(),
             (data.len() * 2) as u32,
         );
+        if result != 0 {
+            RegCloseKey(key);
+            anyhow::bail!("无法写入登录启动项：{}", result);
+        }
+        let mut actual = vec![0u16; data.len()];
+        let mut bytes = (actual.len() * 2) as u32;
+        let mut kind = 0;
+        let verified = RegQueryValueExW(
+            key,
+            platform::wide(&startup_name(info)).as_ptr(),
+            std::ptr::null_mut(),
+            &mut kind,
+            actual.as_mut_ptr().cast(),
+            &mut bytes,
+        );
         RegCloseKey(key);
-        ensure!(result == 0, crate::i18n::text("无法写入登录启动项"));
+        ensure!(
+            verified == 0 && kind == REG_SZ && actual == data,
+            "登录启动项写入后校验失败"
+        );
     }
     Ok(target)
 }

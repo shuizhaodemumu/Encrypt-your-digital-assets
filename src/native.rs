@@ -125,9 +125,23 @@ pub struct Video {
     tracks: unsafe extern "C" fn(*mut c_void) -> i32,
     time: unsafe extern "C" fn(*mut c_void) -> i64,
     pause: unsafe extern "C" fn(*mut c_void),
+    length: unsafe extern "C" fn(*mut c_void) -> i64,
+    position: unsafe extern "C" fn(*mut c_void) -> f32,
     set_pos: unsafe extern "C" fn(*mut c_void, f32),
     volume: unsafe extern "C" fn(*mut c_void, i32) -> i32,
 }
+pub fn is_video_name(name: &str) -> bool {
+    std::path::Path::new(name)
+        .extension()
+        .and_then(|v| v.to_str())
+        .is_some_and(|v| {
+            matches!(
+                v.to_ascii_lowercase().as_str(),
+                "mp4" | "mkv" | "avi" | "mov" | "webm"
+            )
+        })
+}
+
 impl Video {
     pub fn open(
         reader: Reader,
@@ -135,6 +149,12 @@ impl Video {
         hwnd: isize,
         repeat: bool,
     ) -> Result<Self> {
+        let is_mov = reader
+            .package
+            .info
+            .display_name
+            .to_ascii_lowercase()
+            .ends_with(".mov");
         let root = runtime()?;
         unsafe {
             let plugins = CString::new(root.join("plugins").to_string_lossy().as_bytes())?;
@@ -145,6 +165,7 @@ impl Video {
             let argv = [
                 CString::new("--no-video-title-show")?,
                 CString::new("--no-plugins-cache")?,
+                CString::new("--ignore-config")?,
             ];
             let args: Vec<_> = argv.iter().map(|s| s.as_ptr()).collect();
             let instance = new(args.len() as i32, args.as_ptr());
@@ -166,6 +187,15 @@ impl Video {
                 !media.is_null(),
                 crate::i18n::text("播放器读取接口初始化失败")
             );
+            let add_option: unsafe extern "C" fn(*mut c_void, *const c_char) =
+                *lib.get(b"libvlc_media_add_option\0")?;
+            // VLC 3 native QuickTime demux can stall on recent MOV muxers.
+            // Its bundled avformat demux handles the same original bytes and
+            // preserves the encrypted seek/read callbacks and native repeat.
+            if is_mov {
+                let option = CString::new(":demux=avformat")?;
+                add_option(media, option.as_ptr());
+            }
             if repeat {
                 // VLC 3 rejects negative input-repeat values. Repeat inside its
                 // input pipeline instead of destroying the vout at each EOF.
@@ -202,6 +232,8 @@ impl Video {
                 tracks: *lib.get(b"libvlc_video_get_track_count\0")?,
                 time: *lib.get(b"libvlc_media_player_get_time\0")?,
                 pause: *lib.get(b"libvlc_media_player_pause\0")?,
+                length: *lib.get(b"libvlc_media_player_get_length\0")?,
+                position: *lib.get(b"libvlc_media_player_get_position\0")?,
                 set_pos: *lib.get(b"libvlc_media_player_set_position\0")?,
                 volume: *lib.get(b"libvlc_audio_set_volume\0")?,
                 _lib: lib,
@@ -219,6 +251,22 @@ impl Video {
     }
     pub fn time(&self) -> i64 {
         unsafe { (self.time)(self.player) }
+    }
+    pub fn length(&self) -> i64 {
+        unsafe { (self.length)(self.player) }.max(0)
+    }
+    pub fn position(&self) -> f32 {
+        unsafe { (self.position)(self.player) }.clamp(0.0, 1.0)
+    }
+    pub fn skip(&self, seconds: i64) -> Result<()> {
+        let duration = self.length();
+        if duration > 0 {
+            self.seek(
+                (self.time().saturating_add(seconds * 1000)).clamp(0, duration - 1) as f32
+                    / duration as f32,
+            )?;
+        }
+        Ok(())
     }
     pub fn play(&self) -> Result<()> {
         authorized(&self.input.auth)?;
@@ -240,8 +288,9 @@ impl Video {
     }
     pub fn repeat(&self) -> Result<()> {
         authorized(&self.input.auth)?;
-        unsafe { (self.stop)(self.player) };
-        self.input.reader.lock().unwrap().seek(0)?;
+        // Native input-repeat normally handles EOF. Never block the UI with
+        // libvlc_media_player_stop during a loop transition.
+        self.seek(0.0)?;
         self.play()
     }
 }
@@ -398,6 +447,15 @@ impl Drop for Bitmap {
 mod tests {
     use super::*;
     #[test]
+    fn video_formats_repeat_consistently() {
+        for name in ["clip.MP4", "clip.mkv", "clip.AVI", "中文.mov", "clip.webm"] {
+            assert!(is_video_name(name));
+        }
+        for name in ["clip.mp3", "clip.wav", "clip.pdf", "mp4", "clip.mp4.txt"] {
+            assert!(!is_video_name(name));
+        }
+    }
+    #[test]
     #[ignore = "requires a short MP4 fixture and Windows desktop"]
     fn encrypted_video_repeats_without_rebuilding_output() -> Result<()> {
         use std::{
@@ -438,11 +496,12 @@ mod tests {
         let issuer = Issuer::create()?;
         let public = issuer.spki()?;
         let info = PackageInfo {
+            custom_activation_window: true,
             version: 1,
             content_id: uuid::Uuid::new_v4(),
             issuer_fingerprint: fingerprint(&public),
             issuer_public_key: b64(&public),
-            display_name: "loop-fixture.mp4".into(),
+            display_name: fixture.file_name().unwrap().to_string_lossy().into_owned(),
             kind: "media".into(),
             plain_length: fs::metadata(&fixture)?.len(),
             chunk_size: CHUNK,
@@ -580,6 +639,16 @@ mod tests {
                 && ended_samples == 0,
             "Loop continuity regression"
         );
+        if std::env::var_os("OFFLINE_LOOP_DIAGNOSTIC_CLEAN_STOP").is_some() {
+            // Diagnostic control: retain authorization through normal stop.
+            // The default matrix below still revokes during actual playback.
+            println!("AUTHORIZED_CLEAN_STOP_CONTROL_BEFORE_REVOCATION");
+            drop(video);
+            drop(window);
+            fs::remove_file(encrypted)?;
+            fs::remove_dir(folder)?;
+            return Ok(());
+        }
         auth.lock().unwrap().active = false;
         let mut buffer = [0u8; 16];
         let opaque = (&*video.input as *const Input as *mut Input).cast();
@@ -623,6 +692,7 @@ mod tests {
         let issuer = Issuer::create()?;
         let public = issuer.spki()?;
         let info = PackageInfo {
+            custom_activation_window: true,
             version: 1,
             content_id: uuid::Uuid::new_v4(),
             issuer_fingerprint: fingerprint(&public),

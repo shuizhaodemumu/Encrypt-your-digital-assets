@@ -1,50 +1,129 @@
-# 音视频与文档离线加密授权 · Rust
+# Encrypt your digital assets
 
-中文 | [English](README.md)
+[English](README.md) · **当前版本 2.4.3** · Windows x64 · Rust / Win32
 
-Windows 桌面软件，将音频、视频及文档加密打包为独立 EXE，通过设备绑定和离线 LIC 授权控制使用。**2.2.0** 在 Rust 修复 Office 版 2.1.1 的基础上加入中英文界面。
+把视频、PPT、图片和文档打包成加密 Windows EXE，再为接收者签发离线、设备绑定的授权。接收者导出加密设备报告，管理员返回 `.lic` 文件，导入验证后才能打开内容，不需要在线激活服务器。
 
-[下载 Windows x64 成品程序包](https://github.com/shuizhaodemumu/offline-media-license-rust/releases/tag/v2.2.0)，解压 ZIP 后运行 `Packager.exe`，使用成品无需安装 Rust。包内同时提供设备工具、安装入口和已有内容升级工具。
+![2.4.3 授权工作台：淡背景和无白框龙娘插画](docs/screenshots/workspace-zh.png)
 
-## 主要功能
+## 能做什么
 
-- **音视频加密**：分块 AES-256-GCM 加密，LibVLC 通过受控解密流读取媒体；视频授权后无边框全屏、隐藏控件、单个循环播放，到期停止。循环改为引擎内部回放，保持视频输出窗口；播放画布与全屏底色改为黑色，减少结束后重播时的闪白和停顿。
-- **离线授权**：加密设备报告、发行者签名、硬件绑定、首次激活 60 秒窗口、发行者密钥加密备份和 Windows DPAPI 本地状态保护。
-- **文档查看**：内置 PDF、文本与图片查看；Word DOC/DOCX 由管理员端另行安装的 LibreOffice 转换为静态页面。
-- **PPT 原生放映**：原 PPT/PPTX/PPS/PPSX 文件直接加密。接收端需安装并激活 Microsoft PowerPoint 桌面版；运行时使用临时解密文件，只读放映不等于绝对防提取。
-- **中英文切换**：管理员、设备工具、安装入口和接收端窗口顶部提供“中文 / English”菜单，记住当前 Windows 用户的选择。切换不重启播放，不改动文件内容、密钥或授权；系统文件选择器按钮语言由 Windows 决定。视频全屏播放时隐藏菜单，恢复授权窗口后重新显示。
+| 内容或功能 | 当前行为 |
+| --- | --- |
+| 视频 | MP4、MKV、AVI、MOV、WEBM 使用内置 LibVLC；授权后默认全屏、隐藏控件、单文件循环。到结尾由播放器重复，不关闭再重开EXE。MOV采用随附avformat解复用器。 |
+| 音频 | MP3、WAV、M4A、FLAC、OGG由LibVLC播放，提供播放与音量控制；不把视频循环策略泛化成所有音频都循环。 |
+| PowerPoint | 加密原始PPT/PPTX/PPS/PPSX，通过桌面版PowerPoint COM接口放映，保留动画、切换等原文稿功能，不转静态PDF。实际兼容性取决于PowerPoint版本和文稿本身。 |
+| PDF、文本、图片 | PDFium通过内存回调渲染PDF；TXT和PNG/JPEG/GIF/BMP/TIFF等图片由内置查看器显示，不承诺所有动图播放效果。 |
+| Word | 管理员端调用单独安装的LibreOffice，把DOC/DOCX转成PDF后加密；接收者看到转换后的页面，不是可编辑Word文件。 |
+| 离线授权 | 加密硬件报告、稳定设备指纹、签名LIC、自定义首次导入窗口、从首次激活起计算使用天数、密钥口令加密备份。 |
+| 登录自启动 | 授权后校验并保存安装副本，写入当前用户Windows Run启动项；在用户登录后启动，不是无人登录时运行的系统服务。提供修复及取消入口。 |
+| 故障恢复 | 后台心跳监测播放故障或失去响应并重启程序；正式版沿用“10分钟内第三次故障重启后，直接重启电脑”的策略。暂停、正常退出、授权到期和正常视频循环不算故障。 |
+| 图形界面 | 中英双语、前置条件禁用、输入实时校验、签发确认、有效设置记忆；2.4.3保留全窗口淡背景，右侧插画取消白框并柔和羽化。 |
+
+文件扩展名支持不代表所有编码、分辨率和显卡驱动都兼容。PowerPoint和LibreOffice均需自行安装，不随程序分发。
 
 ## 使用流程
 
-1. 管理员创建发行者密钥并加密备份。
-2. 导入并预览文件，生成内容 EXE，保留 `.olmeta` 管理员记录。
-3. 接收端运行内容 EXE，导出加密设备报告并交给管理员。
-4. 管理员导入报告，设置授权天数，签发 LIC。
-5. 接收端在签发后的 60 秒内导入 LIC，激活后开始计算使用期限。
+从[Releases](https://github.com/shuizhaodemumu/Encrypt-your-digital-assets/releases)下载当前便携包，解压到可写目录后运行`Packager.exe`。源码构建脚本会在`程序/`生成管理员`Packager.exe`、设备工具`DeviceTool.exe`和安装器`Packager-Setup.exe`。为兼容现有脚本和包，二进制及内部Cargo名称保持稳定；项目展示名为 **Encrypt your digital assets**。
 
-双语版本以 `%LOCALAPPDATA%/OfflineLicenseBilingualRust` 独立保存安装和状态，保留已有 Office 版本。为双语版本签发授权时，使用双语版本生成的设备报告。
+1. 管理员创建或解锁发行者密钥。`.issuerkey`、口令和管理员内容目录`.olmeta`不要交给接收者。
+2. 导入原文件预览，生成加密内容EXE，将EXE发送给接收者。
+3. 接收者首次打开EXE，点击“获取本机设备识别码”，导出加密JSON设备报告并交给管理员（工作流兼容旧`.josn`命名）。
+4. 管理员选择对应内容包，设置授权天数与首次导入窗口，导入该设备报告。
+5. 核对确认摘要后签发LIC，发给接收者，在窗口期内导入。
+6. 验证成功后打开内容，从首次激活成功时开始计算使用期限，同时启用登录自启动和运行监测。
 
-## 构建与程序
+### 两个时间设置，分别计算
 
-Windows x64 安装稳定版 Rust 与 MSVC 或 GNU 构建工具后，在仓库根目录运行：
+- **首次导入窗口**：正整数，可选秒、分钟、小时或天，初始默认**60秒**。点击确认签发时开始计时。例如设置2小时，就有2小时用来传递并首次导入LIC。
+- **授权天数**：正整数，从接收者首次激活成功时计算，不是从管理员签发时计算。
+
+空白、零、负数、小数、溢出和超出日期范围会被拒绝；记忆最后有效设置。取消签发确认不会生成LIC；新授权替换原期限，不叠加天数。窗口截止时间属于签名正文，直接编辑LIC无法延长。
+
+旧EXE内嵌旧验证器，不会因管理员软件升级自动变化。要使用自定义窗口，需要用本版重新打包原文件，再导出报告和签发；选择旧包时会阻止非60秒签发。新接收端兼容历史60秒授权。
+
+### 视频操作与自启动
+
+鼠标移到屏幕底部显示控制栏，稍后自动隐藏。空格暂停/播放，左右方向键跳转10秒，F11切换全屏，Esc从全屏返回窗口；窗口模式Esc退出。同一视频正常循环保持同一进程。
+
+取消某个内容的登录启动：
 
 ```powershell
-cargo test --locked
-powershell -NoProfile -ExecutionPolicy Bypass -File build/build.ps1 -Release
+.\程序\Packager.exe --disable-startup "C:\路径\内容.exe"
 ```
 
-输出在 `程序/`：`Packager.exe`（管理员）、`DeviceTool.exe`（设备工具）、`Packager-Setup.exe`（安装入口）。构建需要仓库中的 `assets/runtime.zip`；运行库许可、上游源码地址见[第三方说明](第三方说明.md)与 `third-party-licenses/`。
+不要为取消单个内容而删除整个共享用户数据目录：设备密钥可能被多个内容共用。启动项在当前用户登录后执行；Windows延迟或用户禁用启动应用会影响实际自动运行。
 
-UI 回归使用 `watchdog-test-mode` 构建，仅模拟重启策略，不执行真实重启。生产发布不启用该功能。密钥、真实设备报告、用户文档、授权和本机测试产物不进入源码仓库。
+## 如何实现
 
-## 升级已有 Rust Office 内容 EXE
+```text
+原文件 → 分块加密 → 播放器EXE + 追加密文
+接收端硬件信息 + 设备公钥 → 加密设备报告
+管理员发行者密钥 + 内容目录 → 签名且为设备封装内容密钥的LIC
+接收端校验签名、内容、设备、时间 → 解密显示或播放
+```
 
-内容 EXE 内嵌播放器，因此只替换管理员程序不会修复已经生成的 EXE。使用随附“升级已有内容.cmd”，选择原文件，另存为新 EXE；原文件保留。升级会验证密文不变，复制 `.olmeta`，不延长或替换授权。
+- **内容加密**：随机内容密钥，1 MiB的AES-256-GCM分块与认证元数据；密文追加到播放器EXE。随机读取按需解密，供视频寻址和PDF回调使用。
+- **LIC验证**：ECDSA P-256签名正文，RSA-OAEP/SHA-256为设备封装内容密钥；核对内容ID、发行者、硬件策略和时间约束。
+- **设备报告**：临时P-256 ECDH协商，HKDF-SHA-256派生密钥，AES-256-GCM加密完整采集信息，仅对应发行者可解密。
+- **密钥与本机状态**：发行者私钥采用PKCS#8口令加密，PBKDF2-HMAC-SHA-256迭代600,000次和AES-256-CBC；设备私钥和激活状态由Windows DPAPI保护。
+- **硬件采集**：PowerShell/CIM查询电脑、主板、产品UUID、磁盘、CPU、BIOS、内存和物理网卡信息。稳定指纹排除USB移动磁盘和变化的连接状态，完整硬件信息仍加密保存在报告里；不采集IP、DNS、公网IP归属地。更换参与绑定的硬件可能需要重新签发，不承诺任意换件都能保持授权。
+- **显示与重绘**：Rust调用原生Win32控件；离屏绘制和模态期间缓存帧避免重入黑屏。右侧插画通过预乘透明度和AlphaBlend融入背景，内容预览占用工作区时隐藏插画。
+- **运行库**：LibVLC DLL/插件和PDFium随`assets/runtime.zip`嵌入并在本地释放；PowerPoint使用独立宿主/COM路径；Word转换仅在管理员端调用LibreOffice。
 
-该工具专门以原 `OfflineLicenseOfficeRust` 状态目录兼容 Rust 修复 Office 版 2.1.1。先关闭旧内容程序，再打开新文件；不用于 C# 版或协议版本1的旧内容。独立双语版仍使用自己的状态目录。
+### 保护边界
 
-开发者构建升级工具：`build/build.ps1 -Release -OfficeCompat`。将 `build/Upgrade-Content.ps1` 与 `build/升级已有内容.cmd` 放到 `ViewerUpdater-OfficeCompat.exe` 旁。
+这是离线授权和加密分发工具，不保证内容绝对无法复制。合法观看会输出画面和声音，控制操作系统的接收者仍可能录屏、抓取内存或修改程序。原生PowerPoint放映需要临时解密文件，“只放映”不能消除提取风险。纯离线客户端无法获得可信服务器时间或远程撤销信息。请保管发行者密钥和内容目录，加密设备报告也属于敏感管理资料。
 
-专项循环回归：`build/loop-test.ps1 -Fixture 短视频.mp4`，检测4次循环、输出窗口保持、边缘颜色采样和撤销授权后的读取限制。该项需 Windows 桌面和短视频，普通 `cargo test` 会跳过；测试用临时加密包和内存授权夹具，不采集硬件、不安装查看器、不登记启动项。
+## 构建
 
-验收与边界见 [VALIDATION.md](VALIDATION.md)。本次语言修改不代表其他 Office 版本、Word 转换和全新电脑均已实测。
+需要Windows x64、较新的稳定版Rust及匹配的链接器，使用Rust 2021。常规MSVC环境需Visual Studio C++ Build Tools/Windows SDK；GNU环境需MinGW或LLVM链接器。Rust依赖由`Cargo.lock`固定。
+
+```powershell
+git clone https://github.com/shuizhaodemumu/Encrypt-your-digital-assets.git
+cd Encrypt-your-digital-assets
+cargo fmt --check
+cargo test --locked
+cargo build --locked --release
+# 或构建并生成三个角色入口：
+.\build\build.ps1 -Release
+```
+
+PowerShell脚本支持`OFFLINE_RUST_SDK`指定现有GNU SDK目录，也会回退到PATH中的`cargo.exe`，普通构建不要求作者的D盘目录结构。直接Cargo构建结果为`target/release/offline-license-rust.exe`，脚本把它复制成三个入口名称。
+
+### 测试与验证范围
+
+图形测试需要交互式Windows桌面、**测试构建**和相应短视频夹具，细节见[VALIDATION.md](VALIDATION.md)。
+
+```powershell
+cargo build --locked --features watchdog-test-mode
+.\build\ui-test.ps1 -SkipBuild
+.\build\paint-ui-test.ps1 -Version 2.4.3 -CheckSideArtwork -FrameFree
+# 可选：准备work/sample.mp4后运行媒体端到端回归
+.\build\video-e2e.ps1 -Formats mp4
+```
+
+`watchdog-test-mode`仅供自动测试禁用真实电脑重启，正式构建不要启用。不要把真实重启/注销用于自动验收；合成发行者、设备报告和LIC测试产物不得提交到仓库。
+
+常规单元测试23项通过，另1项需桌面的原生用例在默认运行中忽略。实际GUI已检查双语弹窗、预览、自定义窗口签发与导入、模态重绘、无白框像素及60次窗口大小/语言切换。MP4循环、自启动注册与恢复及此前五格式测试各有范围，不等同所有编码、混合DPI、多台电脑、真实重启登录和所有Office版本都通过。
+
+## 源码结构
+
+| 路径 | 负责内容 |
+| --- | --- |
+| `src/core.rs` | 包格式、分块加密、密钥存储与签名授权 |
+| `src/hardware.rs`、`assets/hardware.ps1` | 硬件策略与加密设备报告 |
+| `src/issuance.rs`、`src/session.rs` | 窗口配置、激活、运行时授权 |
+| `src/native.rs` | LibVLC/PDFium FFI及加密读取/寻址回调 |
+| `src/presentation.rs`、`src/automation.rs` | PowerPoint宿主、COM与放映生命周期 |
+| `src/platform.rs`、`src/install.rs`、`src/watchdog.rs` | DPAPI、安装自启动与心跳恢复 |
+| `src/gui.rs`、`src/i18n.rs` | Win32界面、双语状态与分层绘制 |
+| `build/` | 构建、GUI和媒体回归脚本 |
+
+## 第三方与美术素材
+
+LibVLC、PDFium和Rust依赖声明见[第三方说明](第三方说明.md)及`third-party-licenses/`。本Rust程序动态调用原生库，不依赖.NET/LibVLCSharp。第三方组件许可不等于仓库所有图片的统一授权。
+
+右侧龙娘来自用户提供的素材库，[来源索引](docs/artwork-provenance.json)保留原出处。此前H3新图生成触发内存保护，没有完成，因此**本版插画是素材库原图，不是H3新生成图**；柔化边缘由Rust运行时实现。
+
+私钥、LIC、硬件报告、本机SDK、测试工作目录、旧版备份和成品包不提交源码仓库；可执行下载放在Releases中。

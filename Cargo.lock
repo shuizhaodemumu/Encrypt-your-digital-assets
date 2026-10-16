@@ -626,7 +626,7 @@ dependencies = [
 
 [[package]]
 name = "offline-license-rust"
-version = "2.2.0"
+version = "2.4.3"
 dependencies = [
  "aes-gcm",
  "anyhow",

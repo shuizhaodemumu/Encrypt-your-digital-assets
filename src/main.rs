@@ -5,6 +5,7 @@ mod gui;
 mod hardware;
 mod i18n;
 mod install;
+mod issuance;
 mod native;
 mod platform;
 mod presentation;
@@ -66,10 +67,11 @@ fn run() -> Result<()> {
     let args: Vec<String> = std::env::args().collect();
     let exe = std::env::current_exe()?;
     let info = Package::open_exe(&exe).ok().map(|p| p.info);
+    platform::initialize_installed_root(&exe, info.as_ref())?;
     if args.len() > 1 {
         let expected = match args[1].as_str() {
             "--pack" => Some(5),
-            "--issue" => Some(7),
+            "--issue" => None,
             "--decrypt-check" | "--upgrade" | "--watchdog" | "--enroll" => Some(4),
             "--export-device" => Some(3),
             "--ppt-host" => Some(3),
@@ -155,7 +157,8 @@ fn run() -> Result<()> {
                     .to_lowercase()
                     .as_str()
                 {
-                    "mp4" | "mp3" | "wav" => "media",
+                    "mp4" | "mkv" | "avi" | "mov" | "webm" | "mp3" | "wav" | "m4a" | "flac"
+                    | "ogg" => "media",
                     "pdf" => "pdf",
                     "txt" => "text",
                     "png" | "jpg" => "image",
@@ -167,6 +170,7 @@ fn run() -> Result<()> {
                 }
                 let pubkey = issuer.spki()?;
                 let info = PackageInfo {
+                    custom_activation_window: true,
                     version: 2,
                     content_id: uuid::Uuid::new_v4(),
                     issuer_fingerprint: fingerprint(&pubkey),
@@ -194,6 +198,10 @@ fn run() -> Result<()> {
                 return Ok(());
             }
             "--issue" => {
+                ensure!(
+                    matches!(args.len(), 7 | 8),
+                    "用法：--issue 发行者密钥 管理员记录 设备报告 授权天数 输出LIC [首次导入秒数]"
+                );
                 let issuer = Issuer::load(Path::new(&args[2]), &password()?)?;
                 let c = issuer.catalog_load(Path::new(&args[3]))?;
                 ensure!(
@@ -202,7 +210,12 @@ fn run() -> Result<()> {
                 );
                 let request = hardware::request_for(&issuer, &c.info, Path::new(&args[4]))?;
                 let days = args[5].parse()?;
-                let signed = issue(&issuer, &c, &request, days, now())?;
+                let seconds = args
+                    .get(7)
+                    .map(|value| value.parse::<i64>())
+                    .transpose()?
+                    .unwrap_or(60);
+                let signed = issue_with_window(&issuer, &c, &request, days, seconds, now())?;
                 atomic(Path::new(&args[6]), &encode(&signed)?)?;
                 return Ok(());
             }

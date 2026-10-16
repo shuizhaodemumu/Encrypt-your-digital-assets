@@ -14,5 +14,5 @@ jobs:
       - run: cargo build --locked --release
       - uses: actions/upload-artifact@v7.0.2
         with:
-          name: offline-media-license-windows-x64
+          name: encrypt-your-digital-assets-windows-x64
           path: target/release/offline-license-rust.exe

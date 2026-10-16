@@ -21,7 +21,7 @@ use windows_sys::Win32::{
     System::LibraryLoader::{GetModuleHandleW, LoadLibraryW},
     UI::{Controls::Dialogs::*, Controls::*, Input::KeyboardAndMouse::*, WindowsAndMessaging::*},
 };
-const CLASS: &str = "RustOfflineWindow";
+const CLASS: &str = "RustVlcOfflineWindow";
 const TBM_GETPOS: u32 = 0x0400;
 const SS_BLACKRECT: u32 = 0x0004;
 const GCLP_HBRBACKGROUND: i32 = -10;
@@ -42,6 +42,9 @@ const PAUSE: usize = 112;
 const INSTALL: usize = 113;
 const RENEW: usize = 114;
 const EXPORT: usize = 115;
+const FULLSCREEN: usize = 116;
+const CLOSE_PLAYER: usize = 117;
+const STARTUP_REPAIR: usize = 118;
 const LANGUAGE_CHINESE: usize = 201;
 const LANGUAGE_ENGLISH: usize = 202;
 pub enum Role {
@@ -62,6 +65,10 @@ pub struct App {
     surface: isize,
     text: isize,
     days: isize,
+    window_value: isize,
+    window_unit: isize,
+    signing_summary: isize,
+    signing_options: crate::issuance::Options,
     video: Option<Video>,
     presentation: Option<crate::presentation::Presentation>,
     watch: Option<crate::watchdog::Client>,
@@ -82,6 +89,14 @@ pub struct App {
     temp: Vec<PathBuf>,
     font: isize,
     language_menu: isize,
+    artwork: Bitmap,
+    side_artwork: Bitmap,
+    media_clock: isize,
+    dock_visible: bool,
+    dock_until: Instant,
+    cursor: POINT,
+    fullscreen_requested: bool,
+    startup_notice: Option<String>,
 }
 fn set_text(hwnd: isize, s: &str) {
     unsafe {
@@ -131,7 +146,7 @@ pub fn message(s: &str) {
         MessageBoxW(
             0,
             wide(s).as_ptr(),
-            wide(crate::i18n::text("离线文件授权 · Rust修复Office版")).as_ptr(),
+            wide(crate::i18n::text("离线文件授权 · VLC视频重构版")).as_ptr(),
             MB_OK,
         );
     }
@@ -225,7 +240,7 @@ pub fn prompt(parent: isize, title: &str, password: bool) -> Option<String> {
             hInstance: instance,
             lpszClassName: class.as_ptr(),
             hCursor: LoadCursorW(0, IDC_ARROW),
-            hbrBackground: COLOR_WINDOW as isize + 1,
+            hbrBackground: theme_brush(),
             ..std::mem::zeroed()
         };
         RegisterClassW(&wc);
@@ -319,7 +334,18 @@ impl App {
         } else {
             62
         };
-        let h = control(self.hwnd, "BUTTON", label, id, x, y, 100, 34, 0, self.font);
+        let h = control(
+            self.hwnd,
+            "BUTTON",
+            label,
+            id,
+            x,
+            y,
+            100,
+            34,
+            BS_OWNERDRAW as u32 | WS_TABSTOP,
+            self.font,
+        );
         self.view_controls.push(h);
     }
     fn media_controls(&mut self) {
@@ -367,6 +393,21 @@ impl App {
             SendMessageW(self.volbar, TBM_SETPOS, 1, 100);
         }
         self.view_controls.extend([self.seekbar, self.volbar]);
+        self.media_clock = control(
+            self.hwnd,
+            "STATIC",
+            "00:00 / 00:00",
+            122,
+            740,
+            y,
+            145,
+            34,
+            0,
+            self.font,
+        );
+        self.view_controls.push(self.media_clock);
+        self.view_button(crate::i18n::text("全屏"), FULLSCREEN, 890);
+        self.view_button(crate::i18n::text("退出"), CLOSE_PLAYER, 1000);
     }
     pub fn run(role: Role, exe: PathBuf) -> Result<()> {
         unsafe {
@@ -378,17 +419,17 @@ impl App {
                 hInstance: instance,
                 lpszClassName: class.as_ptr(),
                 hCursor: LoadCursorW(0, IDC_ARROW),
-                hbrBackground: COLOR_WINDOW as isize + 1,
+                hbrBackground: theme_brush(),
                 ..std::mem::zeroed()
             };
             RegisterClassW(&wc);
             LoadLibraryW(wide("Msftedit.dll").as_ptr());
             let title = match &role {
                 Role::Administrator => {
-                    crate::i18n::text("离线文件授权管理员 · Rust修复Office版").to_string()
+                    crate::i18n::text("离线文件授权管理员 · VLC视频重构版").to_string()
                 }
-                Role::Device => crate::i18n::text("设备请求工具 · Rust修复Office版").into(),
-                Role::Setup => crate::i18n::text("离线文件授权安装 · Rust修复Office版").into(),
+                Role::Device => crate::i18n::text("设备请求工具 · VLC视频重构版").into(),
+                Role::Setup => crate::i18n::text("离线文件授权安装 · VLC视频重构版").into(),
                 Role::Viewer(i) => i.display_name.clone(),
             };
             #[cfg(feature = "watchdog-test-mode")]
@@ -424,6 +465,10 @@ impl App {
                 surface: 0,
                 text: 0,
                 days: 0,
+                window_value: 0,
+                window_unit: 0,
+                signing_summary: 0,
+                signing_options: crate::issuance::Options::load(),
                 video: None,
                 presentation: None,
                 watch: None,
@@ -444,6 +489,14 @@ impl App {
                 temp: vec![],
                 font,
                 language_menu: 0,
+                artwork: load_artwork()?,
+                side_artwork: load_side_artwork()?,
+                media_clock: 0,
+                dock_visible: false,
+                dock_until: Instant::now(),
+                cursor: POINT { x: -1, y: -1 },
+                fullscreen_requested: true,
+                startup_notice: None,
             });
             let h = CreateWindowExW(
                 0,
@@ -452,8 +505,8 @@ impl App {
                 WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN,
                 CW_USEDEFAULT,
                 CW_USEDEFAULT,
-                1100,
-                780,
+                1180,
+                880,
                 0,
                 0,
                 instance,
@@ -491,6 +544,15 @@ impl App {
             SetTimer(h, 1, 500, None);
             let mut msg: MSG = std::mem::zeroed();
             while GetMessageW(&mut msg, 0, 0, 0) > 0 {
+                if msg.message == WM_KEYDOWN
+                    && matches!(app.role, Role::Viewer(_))
+                    && app.media_key(msg.wParam)?
+                {
+                    continue;
+                }
+                if msg.message == WM_KEYDOWN && msg.wParam == 9 && IsDialogMessageW(h, &msg) != 0 {
+                    continue;
+                }
                 TranslateMessage(&msg);
                 DispatchMessageW(&msg);
             }
@@ -510,7 +572,18 @@ impl App {
         }
     }
     fn add(&mut self, label: &str, id: usize, x: i32, y: i32, w: i32) -> isize {
-        let h = control(self.hwnd, "BUTTON", label, id, x, y, w, 34, 0, self.font);
+        let h = control(
+            self.hwnd,
+            "BUTTON",
+            label,
+            id,
+            x,
+            y,
+            w,
+            34,
+            BS_OWNERDRAW as u32 | WS_TABSTOP,
+            self.font,
+        );
         self.controls.push(h);
         h
     }
@@ -518,45 +591,90 @@ impl App {
         self.status = control(self.hwnd, "STATIC", "", 1, 20, 680, 1040, 50, 0, self.font);
         match &self.role {
             Role::Administrator => {
-                self.add(crate::i18n::text("创建发行者密钥"), CREATE, 15, 15, 150);
-                self.add(crate::i18n::text("恢复 / 解锁密钥"), LOAD, 175, 15, 150);
-                self.add(crate::i18n::text("加密密钥备份"), BACKUP, 335, 15, 150);
-                self.add(crate::i18n::text("导入并预览文件"), IMPORT, 495, 15, 165);
-                self.add(crate::i18n::text("生成内容 EXE"), BUILD, 670, 15, 150);
-                self.add(crate::i18n::text("选择已有内容包"), SELECT, 830, 15, 170);
+                self.add(crate::i18n::text("创建发行者密钥"), CREATE, 44, 150, 210);
+                self.add(crate::i18n::text("恢复 / 解锁密钥"), LOAD, 266, 150, 210);
+                self.add(crate::i18n::text("加密密钥备份"), BACKUP, 44, 198, 210);
+                self.add(crate::i18n::text("导入并预览文件"), IMPORT, 266, 198, 210);
+                self.add(crate::i18n::text("生成内容 EXE"), BUILD, 44, 246, 210);
+                self.add(crate::i18n::text("选择已有内容包"), SELECT, 266, 246, 210);
                 control(
                     self.hwnd,
                     "STATIC",
                     crate::i18n::text("授权天数"),
                     21,
-                    20,
-                    66,
-                    100,
-                    25,
+                    560,
+                    150,
+                    110,
+                    30,
                     0,
                     self.font,
                 );
                 self.days = control(
                     self.hwnd,
                     "EDIT",
-                    "30",
+                    &self.signing_options.days.to_string(),
                     20,
-                    125,
-                    62,
-                    80,
-                    32,
-                    WS_BORDER | ES_AUTOHSCROLL as u32,
+                    680,
+                    146,
+                    100,
+                    36,
+                    WS_BORDER | ES_AUTOHSCROLL as u32 | WS_TABSTOP,
                     self.font,
                 );
-                self.controls.push(self.days);
+                control(
+                    self.hwnd,
+                    "STATIC",
+                    crate::i18n::text("首次导入窗口"),
+                    25,
+                    560,
+                    198,
+                    125,
+                    30,
+                    0,
+                    self.font,
+                );
+                self.window_value = control(
+                    self.hwnd,
+                    "EDIT",
+                    &self.signing_options.value.to_string(),
+                    22,
+                    690,
+                    194,
+                    110,
+                    36,
+                    WS_BORDER | ES_AUTOHSCROLL as u32 | WS_TABSTOP,
+                    self.font,
+                );
+                self.window_unit = control(
+                    self.hwnd,
+                    "COMBOBOX",
+                    "",
+                    23,
+                    810,
+                    194,
+                    135,
+                    160,
+                    CBS_DROPDOWNLIST as u32 | WS_VSCROLL | WS_TABSTOP,
+                    self.font,
+                );
+                self.signing_summary =
+                    control(self.hwnd, "STATIC", "", 24, 560, 244, 450, 44, 0, self.font);
+                self.controls.extend([
+                    self.days,
+                    self.window_value,
+                    self.window_unit,
+                    self.signing_summary,
+                ]);
+                self.refresh_signing_labels();
                 self.add(
                     crate::i18n::text("导入设备识别码并签发"),
                     ISSUE,
-                    220,
-                    62,
-                    220,
+                    560,
+                    302,
+                    300,
                 );
-                self.add(crate::i18n::text("设备请求工具"), DEVICE, 455, 62, 165);
+                self.add(crate::i18n::text("设备请求工具"), DEVICE, 870, 302, 165);
+                self.refresh_signing_form();
                 self.status(crate::i18n::text(
                     "请创建或解锁发行者密钥，随后导入文件。视频内容 EXE 默认全屏单个循环。",
                 ))
@@ -608,6 +726,88 @@ impl App {
         self.layout();
         Ok(())
     }
+    fn read_signing_form(&self) -> Result<crate::issuance::Options> {
+        let unit = unsafe { SendMessageW(self.window_unit, CB_GETCURSEL, 0, 0) };
+        let options = crate::issuance::Options::parse(
+            &text(self.days),
+            &text(self.window_value),
+            usize::try_from(unit).unwrap_or(usize::MAX),
+        )?;
+        if let Some(catalog) = &self.catalog {
+            ensure!(
+                catalog.info.custom_activation_window || options.seconds()? == 60,
+                crate::i18n::text("此内容由旧版打包，仅支持60秒。自定义窗口请重新打包原文件。")
+            );
+        }
+        Ok(options)
+    }
+    fn refresh_signing_labels(&self) {
+        if self.window_unit == 0 {
+            return;
+        }
+        unsafe {
+            let selected = SendMessageW(self.window_unit, CB_GETCURSEL, 0, 0);
+            SendMessageW(self.window_unit, CB_RESETCONTENT, 0, 0);
+            for unit in ["秒", "分钟", "小时", "天"] {
+                SendMessageW(
+                    self.window_unit,
+                    CB_ADDSTRING,
+                    0,
+                    wide(crate::i18n::text(unit)).as_ptr() as isize,
+                );
+            }
+            SendMessageW(
+                self.window_unit,
+                CB_SETCURSEL,
+                if selected >= 0 {
+                    selected as usize
+                } else {
+                    self.signing_options.unit
+                },
+                0,
+            );
+            set_text(GetDlgItem(self.hwnd, 25), crate::i18n::text("首次导入窗口"));
+        }
+    }
+    fn refresh_signing_form(&mut self) {
+        if !matches!(self.role, Role::Administrator) || self.window_unit == 0 {
+            return;
+        }
+        let parsed = self.read_signing_form();
+        match &parsed {
+            Ok(value) => set_text(self.signing_summary, &value.summary()),
+            Err(error) => set_text(self.signing_summary, &error.to_string()),
+        }
+        if let Ok(value) = &parsed {
+            if value != &self.signing_options {
+                if let Err(error) = value.save() {
+                    set_text(
+                        self.signing_summary,
+                        &format!("{}: {error}", crate::i18n::text("设置暂未保存")),
+                    );
+                }
+                self.signing_options = value.clone();
+            }
+        }
+        unsafe {
+            for (id, enabled) in [
+                (BACKUP, self.issuer.is_some()),
+                (IMPORT, self.issuer.is_some()),
+                (SELECT, self.issuer.is_some()),
+                (BUILD, self.issuer.is_some() && self.input.is_some()),
+                (
+                    ISSUE,
+                    self.issuer.is_some() && self.catalog.is_some() && parsed.is_ok(),
+                ),
+            ] {
+                let button = GetDlgItem(self.hwnd, id as i32);
+                if button != 0 {
+                    EnableWindow(button, enabled as i32);
+                    InvalidateRect(button, ptr::null(), 1);
+                }
+            }
+        }
+    }
     fn status(&self, s: &str) {
         set_text(self.status, s);
     }
@@ -642,9 +842,9 @@ impl App {
             }
         }
         let title = match &self.role {
-            Role::Administrator => crate::i18n::text("离线文件授权管理员 · Rust修复Office版"),
-            Role::Device => crate::i18n::text("设备请求工具 · Rust修复Office版"),
-            Role::Setup => crate::i18n::text("离线文件授权安装 · Rust修复Office版"),
+            Role::Administrator => crate::i18n::text("离线文件授权管理员 · VLC视频重构版"),
+            Role::Device => crate::i18n::text("设备请求工具 · VLC视频重构版"),
+            Role::Setup => crate::i18n::text("离线文件授权安装 · VLC视频重构版"),
             Role::Viewer(info) => &info.display_name,
         };
         #[cfg(feature = "watchdog-test-mode")]
@@ -653,7 +853,12 @@ impl App {
             "{title} [TEST BUILD: system restart disabled]"
         );
         set_text(self.hwnd, &title);
+        self.refresh_signing_labels();
+        self.refresh_signing_form();
         self.update_language_menu();
+        unsafe {
+            InvalidateRect(self.hwnd, ptr::null(), 1);
+        }
         self.status(crate::i18n::text(
             "语言已切换，当前内容和授权状态保持不变。",
         ));
@@ -736,16 +941,16 @@ impl App {
         }
         self.fullscreen = true;
         unsafe {
+            GetCursorPos(&mut self.cursor);
+            self.dock_until = Instant::now();
             SetClassLongPtrW(self.hwnd, GCLP_HBRBACKGROUND, GetStockObject(BLACK_BRUSH));
         }
-        for h in self.view_controls.drain(..) {
+        for h in self.view_controls.iter().chain(self.controls.iter()) {
             unsafe {
-                DestroyWindow(h);
+                ShowWindow(*h, SW_HIDE);
             }
         }
-        self.seekbar = 0;
-        self.volbar = 0;
-        self.clear_buttons();
+        self.dock_visible = false;
         unsafe {
             SetMenu(self.hwnd, 0);
             GetWindowRect(self.hwnd, &mut self.windowed);
@@ -771,6 +976,99 @@ impl App {
         }
         self.layout();
     }
+    fn leave_fullscreen(&mut self) {
+        if !self.fullscreen {
+            return;
+        }
+        self.fullscreen = false;
+        self.fullscreen_requested = false;
+        self.dock_visible = true;
+        unsafe {
+            SetWindowLongPtrW(
+                self.hwnd,
+                GWL_STYLE,
+                (WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN | WS_VISIBLE) as isize,
+            );
+            SetWindowPos(
+                self.hwnd,
+                0,
+                self.windowed.left,
+                self.windowed.top,
+                self.windowed.right - self.windowed.left,
+                self.windowed.bottom - self.windowed.top,
+                SWP_FRAMECHANGED | SWP_NOZORDER,
+            );
+            SetMenu(self.hwnd, self.language_menu);
+            DrawMenuBar(self.hwnd);
+            ShowWindow(self.status, SW_SHOW);
+            ShowWindow(self.hwnd, SW_SHOW);
+            for h in self.view_controls.iter().chain(self.controls.iter()) {
+                ShowWindow(*h, SW_SHOW);
+            }
+        }
+        self.layout();
+    }
+    fn media_key(&mut self, key: usize) -> Result<bool> {
+        if self.video.is_none() {
+            return Ok(false);
+        }
+        match key {
+            32 => {
+                let v = self.video.as_ref().unwrap();
+                if v.state() == 4 {
+                    v.play()?;
+                } else {
+                    v.pause();
+                }
+            }
+            37 => self.video.as_ref().unwrap().skip(-10)?,
+            39 => self.video.as_ref().unwrap().skip(10)?,
+            122 => {
+                if self.fullscreen {
+                    self.leave_fullscreen();
+                } else {
+                    self.fullscreen_requested = true;
+                    self.fullscreen();
+                }
+            }
+            27 if self.fullscreen => self.leave_fullscreen(),
+            _ => return Ok(false),
+        }
+        Ok(true)
+    }
+    fn update_dock(&mut self) {
+        if !self.fullscreen || self.video.is_none() {
+            return;
+        }
+        unsafe {
+            let mut cursor: POINT = std::mem::zeroed();
+            GetCursorPos(&mut cursor);
+            let mut local = cursor;
+            ScreenToClient(self.hwnd, &mut local);
+            let mut rect: RECT = std::mem::zeroed();
+            GetClientRect(self.hwnd, &mut rect);
+            let moved = cursor.x != self.cursor.x || cursor.y != self.cursor.y;
+            self.cursor = cursor;
+            let inside =
+                local.x >= 0 && local.x < rect.right && local.y >= 0 && local.y < rect.bottom;
+            // A parked pointer must not keep controls visible. Deliberate motion
+            // near the bottom reveals the dock for three seconds.
+            if moved && inside && local.y > rect.bottom - 100 {
+                self.dock_until = Instant::now() + Duration::from_secs(3);
+            }
+            let focused = GetFocus();
+            let editing =
+                self.view_controls.contains(&focused) && (GetAsyncKeyState(1) as u16 & 0x8000 != 0);
+            let visible = Instant::now() < self.dock_until || editing;
+            if visible != self.dock_visible {
+                self.dock_visible = visible;
+                for h in &self.view_controls {
+                    ShowWindow(*h, if visible { SW_SHOW } else { SW_HIDE });
+                }
+                self.layout();
+            }
+        }
+    }
     fn layout(&self) {
         unsafe {
             if self.hwnd == 0 {
@@ -779,17 +1077,69 @@ impl App {
             let mut r: RECT = std::mem::zeroed();
             GetClientRect(self.hwnd, &mut r);
             let top = if matches!(self.role, Role::Administrator) {
-                if self.video.is_some() || self.pdf.is_some() {
-                    160
+                if self.video.is_none() && !self.view_controls.is_empty() {
+                    436
                 } else {
-                    110
+                    386
                 }
             } else if self.fullscreen {
                 0
             } else {
                 110
             };
-            let bottom = if self.fullscreen { 0 } else { 65 };
+            // Some D3D video outputs composite above sibling GDI controls.
+            // Reserve a dock strip only while controls are requested so the
+            // controls remain visible and clickable on those drivers too.
+            let bottom = if self.fullscreen {
+                if self.dock_visible {
+                    80
+                } else {
+                    0
+                }
+            } else {
+                65
+            };
+            if matches!(self.role, Role::Administrator) {
+                let half = (r.right - 72) / 2;
+                let left = 44;
+                let right = 68 + half;
+                let button_width = (half - 52) / 2;
+                for (id, column, row) in [
+                    (CREATE, 0, 0),
+                    (LOAD, 1, 0),
+                    (BACKUP, 0, 1),
+                    (IMPORT, 1, 1),
+                    (BUILD, 0, 2),
+                    (SELECT, 1, 2),
+                ] {
+                    let h = GetDlgItem(self.hwnd, id as i32);
+                    if h != 0 {
+                        MoveWindow(
+                            h,
+                            left + column * (button_width + 12),
+                            150 + row * 48,
+                            button_width,
+                            36,
+                            1,
+                        );
+                    }
+                }
+                for (id, x, y, width, height) in [
+                    (21, right, 150, 170, 30),
+                    (20, right + 180, 146, 95, 36),
+                    (25, right, 198, 170, 36),
+                    (22, right + 180, 194, 95, 36),
+                    (23, right + 287, 194, 120, 160),
+                    (24, right, 244, half - 40, 48),
+                    (ISSUE as i32, right, 302, half - 250, 36),
+                    (DEVICE as i32, right + half - 238, 302, 190, 36),
+                ] {
+                    let h = GetDlgItem(self.hwnd, id);
+                    if h != 0 {
+                        MoveWindow(h, x, y, width, height, 1);
+                    }
+                }
+            }
             MoveWindow(self.status, 20, r.bottom - 60, (r.right - 40).max(1), 55, 1);
             if self.surface != 0 {
                 MoveWindow(
@@ -810,6 +1160,52 @@ impl App {
                     (r.bottom - top - bottom).max(1),
                     1,
                 );
+            }
+            if matches!(self.role, Role::Administrator) && self.video.is_none() {
+                for (index, h) in self.view_controls.iter().enumerate() {
+                    MoveWindow(*h, 24 + index as i32 * 150, 386, 140, 36, 1);
+                }
+            }
+            if self.video.is_some() {
+                let y = if self.fullscreen {
+                    r.bottom - 64
+                } else {
+                    r.bottom - 118
+                };
+                let width = r.right;
+                for h in &self.view_controls {
+                    let id = GetDlgCtrlID(*h) as usize;
+                    let (x, w) = match id {
+                        PLAY => (16, 64),
+                        PAUSE => (88, 64),
+                        120 => (170, (width - 670).max(100)),
+                        121 => ((width - 480).max(300), 110),
+                        122 => ((width - 350).max(430), 155),
+                        FULLSCREEN => (width - 180, 100),
+                        CLOSE_PLAYER => (width - 70, 60),
+                        _ => continue,
+                    };
+                    MoveWindow(*h, x, y, w, 36, 1);
+                    SetWindowPos(
+                        *h,
+                        HWND_TOP,
+                        0,
+                        0,
+                        0,
+                        0,
+                        SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
+                    );
+                }
+                if self.surface != 0 && !self.fullscreen {
+                    MoveWindow(
+                        self.surface,
+                        16,
+                        top,
+                        (r.right - 32).max(1),
+                        (r.bottom - top - 130).max(1),
+                        1,
+                    );
+                }
             }
             InvalidateRect(self.hwnd, ptr::null(), 1);
         }
@@ -843,7 +1239,7 @@ impl App {
                     self.font,
                 );
                 let repeat = matches!(self.role, Role::Viewer(_))
-                    && info.display_name.to_ascii_lowercase().ends_with(".mp4");
+                    && crate::native::is_video_name(&info.display_name);
                 self.video = Some(Video::open(reader, auth, self.surface, repeat)?);
                 self.loop_count = 0;
                 self.loop_fallbacks = 0;
@@ -942,12 +1338,24 @@ impl App {
         self.clear_buttons();
         self.add(crate::i18n::text("安装到本机"), INSTALL, 20, 20, 160);
         self.add(crate::i18n::text("导入新授权"), RENEW, 190, 20, 160);
+        self.add(
+            crate::i18n::text("修复自启动"),
+            STARTUP_REPAIR,
+            360,
+            20,
+            150,
+        );
         self.open_reader(Reader::new(package, key)?, self.auth.clone(), &info)?;
         if info.version == 2 {
-            crate::watchdog::enable_startup(&self.exe, &info)?;
+            self.startup_notice = crate::watchdog::enable_startup(&self.exe, &info)
+                .err()
+                .map(|e| format!("自动启动未设置：{e}。可点击“修复自启动”重试。"));
             self.watch = Some(crate::watchdog::Client::start(&self.exe, &info)?);
         }
         self.status(if info.kind == "presentation" {crate::i18n::text("内容已激活，正在启动 PowerPoint 全屏放映；仅放映、不提供编辑和保存，按 Esc 结束本次放映。")} else {crate::i18n::text("内容已激活，运行监测与登录自动启动已启用。视频自动全屏循环，授权到期停止。")});
+        if let Some(notice) = &self.startup_notice {
+            self.status(notice);
+        }
         Ok(())
     }
     fn prepare(&self, path: &Path) -> Result<(PathBuf, Catalog)> {
@@ -977,6 +1385,7 @@ impl App {
         ensure!(len > 0, crate::i18n::text("文件为空"));
         let pubkey = issuer.spki()?;
         let info = PackageInfo {
+            custom_activation_window: true,
             version: 2,
             content_id: uuid::Uuid::new_v4(),
             issuer_fingerprint: fingerprint(&pubkey),
@@ -1183,6 +1592,8 @@ impl App {
                     }
                     let c = issuer.catalog_load(&meta)?;
                     ensure!(c.info == info, crate::i18n::text("管理记录与内容 EXE 不符"));
+                    self.stop();
+                    self.input = None;
                     self.catalog = Some(c);
                     self.status(crate::i18n::text("已有内容包及管理员记录已载入。"));
                 }
@@ -1194,13 +1605,9 @@ impl App {
                     .as_ref()
                     .context(crate::i18n::text("请先生成或选择内容包"))?
                     .clone();
-                let s = text(self.days);
-                ensure!(
-                    !s.is_empty() && s.bytes().all(|c| c.is_ascii_digit()),
-                    crate::i18n::text("天数必须为正整数")
-                );
-                let days: i32 = s.parse().context(crate::i18n::text("天数超出范围"))?;
-                expiry(now(), days)?;
+                let options = self.read_signing_form()?;
+                let days = options.days;
+                let window_seconds = options.seconds()?;
                 if let Some(path) = file_dialog(
                     self.hwnd,
                     false,
@@ -1244,13 +1651,19 @@ impl App {
                         crate::i18n::text("设备授权.lic"),
                     ) {
                         let accepted = unsafe {
-                            MessageBoxW(self.hwnd,wide(&crate::tr_format!("设备：{}\n授权 {days} 天，激活后开始计时。\n确认后开始连续 60 秒激活窗口。新授权不叠加旧期限。", "Device: {}\nLicense duration: {days} days from activation.\nConfirming starts a 60-second activation window. A new license replaces the previous term.", request.device_id)).as_ptr(),wide(crate::i18n::text("立即签发")).as_ptr(),MB_OKCANCEL)
+                            MessageBoxW(self.hwnd,wide(&crate::tr_format!("设备：{}\n{}\n点击确认后开始首次导入倒计时。新授权不叠加旧期限。", "Device: {}\n{}\nConfirming starts the first-import window. A new license replaces the previous term.",request.device_id,options.summary())).as_ptr(),wide(crate::i18n::text("立即签发")).as_ptr(),MB_OKCANCEL)
                         };
                         if accepted == IDOK {
-                            let license =
-                                issue(self.issuer.as_ref().unwrap(), &c, &request, days, now())?;
+                            let license = issue_with_window(
+                                self.issuer.as_ref().unwrap(),
+                                &c,
+                                &request,
+                                days,
+                                window_seconds,
+                                now(),
+                            )?;
                             atomic(&output, &encode(&license)?)?;
-                            self.status(crate::i18n::text("授权已签发，请在 60 秒内导入。"));
+                            self.status(&crate::tr_format!("授权已签发：请在 {} {}内首次导入。使用期限 {} 天，从首次激活成功后计算。", "License issued: import within {} {}. Usage lasts {} days from first activation.",options.value,options.unit_caption(),days));
                         }
                     }
                 }
@@ -1390,6 +1803,27 @@ impl App {
                 self.activation(crate::i18n::text("请选择新的授权文件"));
                 self.command(ACTIVATE)?;
             }
+            FULLSCREEN => {
+                if self.fullscreen {
+                    self.leave_fullscreen();
+                } else {
+                    self.fullscreen_requested = true;
+                    self.fullscreen();
+                }
+            }
+            CLOSE_PLAYER => {
+                self.stop();
+                unsafe {
+                    DestroyWindow(self.hwnd);
+                }
+            }
+            STARTUP_REPAIR => {
+                if let Role::Viewer(info) = &self.role {
+                    let target = crate::watchdog::enable_startup(&self.exe, info)?;
+                    self.startup_notice = None;
+                    self.status(&format!("登录自动播放已开启：{}", target.display()));
+                }
+            }
             INSTALL => {
                 let info = match &self.role {
                     Role::Viewer(i) => Some(i),
@@ -1407,6 +1841,24 @@ impl App {
         Ok(())
     }
     fn tick(&mut self) -> Result<()> {
+        self.refresh_signing_form();
+        self.update_dock();
+        if let Some(video) = &self.video {
+            unsafe {
+                if GetCapture() != self.seekbar {
+                    SendMessageW(
+                        self.seekbar,
+                        TBM_SETPOS,
+                        1,
+                        (video.position() * 1000.0) as isize,
+                    );
+                }
+            }
+            set_text(
+                self.media_clock,
+                &format!("{} / {}", clock(video.time()), clock(video.length())),
+            );
+        }
         if let Some(a) = &self.auth {
             let mut s = a.lock().unwrap();
             if s.active {
@@ -1486,7 +1938,11 @@ impl App {
                     video.state() as isize,
                 );
             }
-            if matches!(self.role, Role::Viewer(_)) && !self.fullscreen && video.has_video() {
+            if matches!(self.role, Role::Viewer(_))
+                && self.fullscreen_requested
+                && !self.fullscreen
+                && video.has_video()
+            {
                 enter = true;
             }
             if video.state() == 6
@@ -1535,12 +1991,149 @@ impl App {
     fn paint(&self) {
         unsafe {
             let mut ps: PAINTSTRUCT = std::mem::zeroed();
-            let dc = BeginPaint(self.hwnd, &mut ps);
+            let window_dc = BeginPaint(self.hwnd, &mut ps);
+            let saved_dc = SaveDC(window_dc);
+            let mut client: RECT = std::mem::zeroed();
+            GetClientRect(self.hwnd, &mut client);
+            let dc = CreateCompatibleDC(window_dc);
+            let frame =
+                CreateCompatibleBitmap(window_dc, client.right.max(1), client.bottom.max(1));
+            if dc == 0 || frame == 0 {
+                if dc != 0 {
+                    DeleteDC(dc);
+                }
+                if frame != 0 {
+                    DeleteObject(frame);
+                }
+                FillRect(window_dc, &client, theme_brush());
+                RestoreDC(window_dc, saved_dc);
+                EndPaint(self.hwnd, &ps);
+                return;
+            }
+            let old_frame = SelectObject(dc, frame);
+            FillRect(
+                dc,
+                &client,
+                if self.fullscreen {
+                    GetStockObject(BLACK_BRUSH)
+                } else {
+                    theme_brush()
+                },
+            );
+            if !self.fullscreen {
+                draw_artwork(dc, &self.artwork, 0, 0, client.right, client.bottom);
+            }
+            if matches!(self.role, Role::Administrator) {
+                let half = (client.right - 72) / 2;
+                for x in [24, 48 + half] {
+                    draw_panel(dc, x, 100, half, 260);
+                }
+                draw_label(
+                    dc,
+                    workspace_title_font(),
+                    24,
+                    22,
+                    client.right - 48,
+                    36,
+                    crate::i18n::text("离线授权工作台"),
+                    0x006B4155,
+                );
+                draw_label(
+                    dc,
+                    self.font,
+                    24,
+                    62,
+                    client.right - 48,
+                    26,
+                    crate::i18n::text(
+                        "先打包内容，再为设备签发授权。首次导入窗口与使用期限独立设置。",
+                    ),
+                    0x008F7E89,
+                );
+                draw_label(
+                    dc,
+                    self.font,
+                    44,
+                    114,
+                    half - 40,
+                    28,
+                    crate::i18n::text("01  内容与发行密钥"),
+                    0x007B536B,
+                );
+                draw_label(
+                    dc,
+                    self.font,
+                    68 + half,
+                    114,
+                    half - 40,
+                    28,
+                    crate::i18n::text("02  授权设置与签发"),
+                    0x007B536B,
+                );
+            }
+            if !self.fullscreen
+                && self.video.is_none()
+                && self.pdf.is_none()
+                && self.bitmap.is_none()
+                && self.text == 0
+            {
+                if matches!(self.role, Role::Administrator) {
+                    let card_x = client.right - 384;
+                    let card_y = 390;
+                    let card_h = (client.bottom - card_y - 90).clamp(150, 300);
+                    draw_side_artwork(dc, &self.side_artwork, card_x, card_y, 360, card_h);
+                }
+                SetBkMode(dc, TRANSPARENT as i32);
+                SetTextColor(dc, 0x007B5B68);
+                SelectObject(dc, self.font);
+                let mut title = RECT {
+                    left: 40,
+                    top: if matches!(self.role, Role::Administrator) {
+                        410
+                    } else {
+                        170
+                    },
+                    right: (client.right - 400).max(400),
+                    bottom: if matches!(self.role, Role::Administrator) {
+                        455
+                    } else {
+                        245
+                    },
+                };
+                let label = wide(crate::i18n::text("离线授权 · 你的专属播放空间"));
+                DrawTextW(dc, label.as_ptr(), -1, &mut title, DT_LEFT | DT_WORDBREAK);
+                let mut subtitle = RECT {
+                    left: 40,
+                    top: if matches!(self.role, Role::Administrator) {
+                        470
+                    } else {
+                        245
+                    },
+                    right: (client.right - 400).max(400),
+                    bottom: if matches!(self.role, Role::Administrator) {
+                        580
+                    } else {
+                        400
+                    },
+                };
+                let label = wide(crate::i18n::text("VLC 播放内核  /  原文件加密\n视频默认全屏循环，移动鼠标到屏幕底部显示控制栏。\n空格 暂停/播放 · ←/→ 跳转10秒 · F11 全屏 · Esc 返回窗口"));
+                DrawTextW(
+                    dc,
+                    label.as_ptr(),
+                    -1,
+                    &mut subtitle,
+                    DT_LEFT | DT_WORDBREAK,
+                );
+            }
             if let Some(b) = &self.bitmap {
                 let mut r: RECT = std::mem::zeroed();
                 GetClientRect(self.hwnd, &mut r);
-                let top = if matches!(self.role, Role::Administrator) && self.pdf.is_some() {
-                    160
+                let top = if matches!(self.role, Role::Administrator) {
+                    if self.pdf.is_some() {
+                        436
+                    } else {
+                        386
+                    }
                 } else {
                     110
                 };
@@ -1572,6 +2165,27 @@ impl App {
                     SRCCOPY,
                 );
             }
+            BitBlt(
+                window_dc,
+                0,
+                0,
+                client.right,
+                client.bottom,
+                dc,
+                0,
+                0,
+                SRCCOPY,
+            );
+            SelectObject(dc, old_frame);
+            DeleteDC(dc);
+            let previous = RemovePropW(self.hwnd, wide("OfflinePaintFrame").as_ptr());
+            if SetPropW(self.hwnd, wide("OfflinePaintFrame").as_ptr(), frame) == 0 {
+                DeleteObject(frame);
+            }
+            if previous != 0 {
+                DeleteObject(previous);
+            }
+            RestoreDC(window_dc, saved_dc);
             EndPaint(self.hwnd, &ps);
         }
     }
@@ -1674,6 +2288,74 @@ impl App {
         Ok(pdf)
     }
 }
+unsafe fn paint_button(l: isize) -> isize {
+    let item = &*(l as *const DRAWITEMSTRUCT);
+    let accent = matches!(item.CtlID as usize, BUILD | ISSUE | ACTIVATE | PLAY);
+    let selected = item.itemState & ODS_SELECTED != 0;
+    let disabled = item.itemState & ODS_DISABLED != 0;
+    let color = if disabled {
+        0x00EEE9EE
+    } else if accent {
+        if selected {
+            0x00834E71
+        } else {
+            0x00A76E8D
+        }
+    } else if selected {
+        0x00E9DAE3
+    } else {
+        0x00FFFFFF
+    };
+    FillRect(item.hDC, &item.rcItem, theme_brush());
+    let brush = CreateSolidBrush(color);
+    let pen = CreatePen(PS_SOLID, 1, 0x00DBC4D2);
+    let old_brush = SelectObject(item.hDC, brush);
+    let old_pen = SelectObject(item.hDC, pen);
+    RoundRect(
+        item.hDC,
+        item.rcItem.left,
+        item.rcItem.top,
+        item.rcItem.right,
+        item.rcItem.bottom,
+        12,
+        12,
+    );
+    SelectObject(item.hDC, old_brush);
+    SelectObject(item.hDC, old_pen);
+    DeleteObject(brush);
+    DeleteObject(pen);
+    let old_font = SelectObject(item.hDC, SendMessageW(item.hwndItem, WM_GETFONT, 0, 0));
+    SetBkMode(item.hDC, TRANSPARENT as i32);
+    SetTextColor(
+        item.hDC,
+        if disabled {
+            0x00AA99A5
+        } else if accent {
+            0x00FFFFFF
+        } else {
+            0x006B4155
+        },
+    );
+    let mut rect = item.rcItem;
+    let caption = wide(&text(item.hwndItem));
+    DrawTextW(
+        item.hDC,
+        caption.as_ptr(),
+        -1,
+        &mut rect,
+        DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX,
+    );
+    if item.itemState & ODS_FOCUS != 0 {
+        rect.left += 3;
+        rect.top += 3;
+        rect.right -= 3;
+        rect.bottom -= 3;
+        DrawFocusRect(item.hDC, &rect);
+    }
+    SelectObject(item.hDC, old_font);
+    1
+}
+
 unsafe fn dispatch(h: isize, m: u32, w: usize, l: isize) -> isize {
     if m == WM_NCCREATE {
         let c = &*(l as *const CREATESTRUCTW);
@@ -1685,8 +2367,45 @@ unsafe fn dispatch(h: isize, m: u32, w: usize, l: isize) -> isize {
         let result =
             std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| -> Result<Option<isize>> {
                 match m {
+                    WM_GETMINMAXINFO => {
+                        let limits = &mut *(l as *mut MINMAXINFO);
+                        limits.ptMinTrackSize.x = if matches!(app.role, Role::Administrator) {
+                            1120
+                        } else {
+                            800
+                        };
+                        limits.ptMinTrackSize.y = if matches!(app.role, Role::Administrator) {
+                            760
+                        } else {
+                            480
+                        };
+                        Ok(Some(0))
+                    }
+                    WM_CTLCOLORSTATIC => {
+                        SetBkMode(w as isize, TRANSPARENT as i32);
+                        let invalid = l == app.signing_summary && app.read_signing_form().is_err();
+                        SetTextColor(w as isize, if invalid { 0x004343B2 } else { 0x00453735 });
+                        let form = matches!(GetDlgCtrlID(l), 21 | 24 | 25)
+                            && matches!(app.role, Role::Administrator);
+                        return Ok(Some(if form {
+                            GetStockObject(WHITE_BRUSH)
+                        } else {
+                            theme_brush()
+                        }));
+                    }
+                    WM_CTLCOLORBTN => {
+                        SetBkMode(w as isize, TRANSPARENT as i32);
+                        return Ok(Some(theme_brush()));
+                    }
                     WM_COMMAND => {
-                        app.command(w & 0xffff)?;
+                        let id = w & 0xffff;
+                        let notification = (w >> 16) & 0xffff;
+                        if matches!(id, 20 | 22 | 23) && matches!(notification, 1 | 768) {
+                            app.refresh_signing_form();
+                            return Ok(Some(0));
+                        }
+                        app.command(id)?;
+                        app.refresh_signing_form();
                         Ok(Some(0))
                     }
                     WM_HSCROLL => {
@@ -1717,6 +2436,7 @@ unsafe fn dispatch(h: isize, m: u32, w: usize, l: isize) -> isize {
                         FillRect(w as isize, &rect, GetStockObject(BLACK_BRUSH));
                         Ok(Some(1))
                     }
+                    WM_KEYDOWN if app.media_key(w)? => Ok(Some(0)),
                     WM_KEYDOWN if w == 27 => {
                         app.stop();
                         DestroyWindow(h);
@@ -1767,7 +2487,35 @@ unsafe extern "system" fn wndproc(h: isize, m: u32, w: usize, l: isize) -> isize
         PostQuitMessage(0);
         return 0;
     }
+    // Rendering notifications may arrive inside modal dialogs or MoveWindow while
+    // dispatch owns &mut App. Render independently; never alias that reference.
+    if m == WM_DRAWITEM {
+        return paint_button(l);
+    }
+    if m == WM_ERASEBKGND {
+        return 1;
+    }
+    if m == WM_NCDESTROY {
+        let frame = RemovePropW(h, wide("OfflinePaintFrame").as_ptr());
+        if frame != 0 {
+            DeleteObject(frame);
+        }
+    }
     let p = GetWindowLongPtrW(h, GWLP_USERDATA) as *mut App;
+    if !p.is_null() && (*p).busy {
+        if m == WM_PAINT {
+            return paint_cached_frame(h);
+        }
+        if m == WM_CTLCOLORSTATIC || m == WM_CTLCOLORBTN {
+            SetBkMode(w as isize, TRANSPARENT as i32);
+            SetTextColor(w as isize, 0x00453735);
+            return if matches!(GetDlgCtrlID(l), 21 | 24 | 25) {
+                GetStockObject(WHITE_BRUSH)
+            } else {
+                theme_brush()
+            };
+        }
+    }
     if p.is_null()
         || (*p).busy
         || !matches!(
@@ -1780,6 +2528,10 @@ unsafe extern "system" fn wndproc(h: isize, m: u32, w: usize, l: isize) -> isize
                 | WM_ERASEBKGND
                 | WM_KEYDOWN
                 | WM_CLOSE
+                | WM_CTLCOLORSTATIC
+                | WM_CTLCOLORBTN
+                | WM_DRAWITEM
+                | WM_GETMINMAXINFO
         )
     {
         return DefWindowProcW(h, m, w, l);
@@ -1789,5 +2541,235 @@ unsafe extern "system" fn wndproc(h: isize, m: u32, w: usize, l: isize) -> isize
     (*p).busy = true;
     let result = dispatch(h, m, w, l);
     (*p).busy = false;
+    if matches!(m, WM_COMMAND | WM_SIZE) {
+        RedrawWindow(h, ptr::null(), 0, RDW_INVALIDATE | RDW_ALLCHILDREN);
+    }
     result
+}
+
+unsafe fn paint_cached_frame(h: isize) -> isize {
+    let mut ps: PAINTSTRUCT = std::mem::zeroed();
+    let dc = BeginPaint(h, &mut ps);
+    FillRect(dc, &ps.rcPaint, theme_brush());
+    let frame = GetPropW(h, wide("OfflinePaintFrame").as_ptr());
+    if frame != 0 {
+        let memory = CreateCompatibleDC(dc);
+        if memory != 0 {
+            let old = SelectObject(memory, frame);
+            let mut bitmap: BITMAP = std::mem::zeroed();
+            if GetObjectW(
+                frame,
+                std::mem::size_of::<BITMAP>() as i32,
+                (&mut bitmap as *mut BITMAP).cast(),
+            ) != 0
+            {
+                BitBlt(
+                    dc,
+                    0,
+                    0,
+                    bitmap.bmWidth,
+                    bitmap.bmHeight,
+                    memory,
+                    0,
+                    0,
+                    SRCCOPY,
+                );
+            }
+            SelectObject(memory, old);
+            DeleteDC(memory);
+        }
+    }
+    EndPaint(h, &ps);
+    0
+}
+
+fn clock(ms: i64) -> String {
+    let seconds = ms.max(0) / 1000;
+    format!("{:02}:{:02}", seconds / 60, seconds % 60)
+}
+fn theme_brush() -> isize {
+    static BRUSH: std::sync::OnceLock<isize> = std::sync::OnceLock::new();
+    *BRUSH.get_or_init(|| unsafe { CreateSolidBrush(0x00FCF6F8) })
+}
+fn load_artwork() -> Result<Bitmap> {
+    let img = image::load_from_memory(include_bytes!("../assets/player-art.png"))?.to_rgba8();
+    let (width, height) = img.dimensions();
+    let mut bgra = img.into_raw();
+    for pixel in bgra.chunks_exact_mut(4) {
+        pixel.swap(0, 2);
+        // Composite the artwork once at 14% opacity over the workspace color.
+        for (channel, base) in pixel[..3].iter_mut().zip([252u16, 246, 248]) {
+            *channel = ((*channel as u16 * 14 + base * 86) / 100) as u8;
+        }
+        pixel[3] = 255;
+    }
+    Ok(Bitmap {
+        width: width as i32,
+        height: height as i32,
+        bgra,
+    })
+}
+fn load_side_artwork() -> Result<Bitmap> {
+    let image = image::load_from_memory(include_bytes!("../assets/dragon-side.png"))?
+        .thumbnail(768, 768)
+        .to_rgba8();
+    let (width, height) = image.dimensions();
+    let mut bgra = image.into_raw();
+    // Premultiplied alpha for AC_SRC_ALPHA: feather into the actual canvas,
+    // rather than fading to a solid rectangle or changing window opacity.
+    let feather = width.min(height) as f32 * 0.16;
+    for (index, pixel) in bgra.chunks_exact_mut(4).enumerate() {
+        let x = index as u32 % width;
+        let y = index as u32 / width;
+        let distance = x.min(width - 1 - x).min(y.min(height - 1 - y)) as f32;
+        let t = (distance / feather).clamp(0.0, 1.0);
+        let alpha = (pixel[3] as f32 * t * t * (3.0 - 2.0 * t)).round() as u8;
+        pixel.swap(0, 2);
+        for channel in &mut pixel[..3] {
+            *channel = ((*channel as u16 * alpha as u16 + 127) / 255) as u8;
+        }
+        pixel[3] = alpha;
+    }
+    Ok(Bitmap {
+        width: width as i32,
+        height: height as i32,
+        bgra,
+    })
+}
+
+unsafe fn draw_artwork(dc: isize, b: &Bitmap, x: i32, y: i32, w: i32, h: i32) {
+    let scale = (w as f64 / b.width as f64).max(h as f64 / b.height as f64);
+    let dw = (b.width as f64 * scale) as i32;
+    let dh = (b.height as f64 * scale) as i32;
+    let x = x + (w - dw) / 2;
+    let y = y + (h - dh) / 2;
+    let w = dw;
+    let h = dh;
+    let mut info: BITMAPINFO = std::mem::zeroed();
+    info.bmiHeader.biSize = std::mem::size_of::<BITMAPINFOHEADER>() as u32;
+    info.bmiHeader.biWidth = b.width;
+    info.bmiHeader.biHeight = -b.height;
+    info.bmiHeader.biPlanes = 1;
+    info.bmiHeader.biBitCount = 32;
+    info.bmiHeader.biCompression = BI_RGB;
+    SetStretchBltMode(dc, HALFTONE);
+    StretchDIBits(
+        dc,
+        x,
+        y,
+        w,
+        h,
+        0,
+        0,
+        b.width,
+        b.height,
+        b.bgra.as_ptr().cast(),
+        &info,
+        DIB_RGB_COLORS,
+        SRCCOPY,
+    );
+}
+unsafe fn draw_side_artwork(dc: isize, b: &Bitmap, x: i32, y: i32, w: i32, h: i32) {
+    if w <= 0 || h <= 0 {
+        return;
+    }
+    let scale = (w as f64 / b.width as f64).min(h as f64 / b.height as f64);
+    let dw = (b.width as f64 * scale).max(1.0) as i32;
+    let dh = (b.height as f64 * scale).max(1.0) as i32;
+    let mut info: BITMAPINFO = std::mem::zeroed();
+    info.bmiHeader.biSize = std::mem::size_of::<BITMAPINFOHEADER>() as u32;
+    info.bmiHeader.biWidth = b.width;
+    info.bmiHeader.biHeight = -b.height;
+    info.bmiHeader.biPlanes = 1;
+    info.bmiHeader.biBitCount = 32;
+    info.bmiHeader.biCompression = BI_RGB;
+    let mut bits = ptr::null_mut();
+    let bitmap = CreateDIBSection(dc, &info, DIB_RGB_COLORS, &mut bits, 0, 0);
+    if bitmap == 0 {
+        return;
+    }
+    let memory = CreateCompatibleDC(dc);
+    if memory != 0 && !bits.is_null() {
+        ptr::copy_nonoverlapping(b.bgra.as_ptr(), bits.cast(), b.bgra.len());
+        let previous = SelectObject(memory, bitmap);
+        AlphaBlend(
+            dc,
+            x + (w - dw) / 2,
+            y + (h - dh) / 2,
+            dw,
+            dh,
+            memory,
+            0,
+            0,
+            b.width,
+            b.height,
+            BLENDFUNCTION {
+                BlendOp: AC_SRC_OVER as u8,
+                BlendFlags: 0,
+                SourceConstantAlpha: 255,
+                AlphaFormat: AC_SRC_ALPHA as u8,
+            },
+        );
+        SelectObject(memory, previous);
+    }
+    if memory != 0 {
+        DeleteDC(memory);
+    }
+    DeleteObject(bitmap);
+}
+
+unsafe fn draw_label(
+    dc: isize,
+    font: isize,
+    x: i32,
+    y: i32,
+    w: i32,
+    h: i32,
+    label: &str,
+    color: u32,
+) {
+    SelectObject(dc, font);
+    SetBkMode(dc, TRANSPARENT as i32);
+    SetTextColor(dc, color);
+    let mut rect = RECT {
+        left: x,
+        top: y,
+        right: x + w,
+        bottom: y + h,
+    };
+    let caption = wide(label);
+    DrawTextW(dc, caption.as_ptr(), -1, &mut rect, DT_LEFT | DT_WORDBREAK);
+}
+unsafe fn draw_panel(dc: isize, x: i32, y: i32, w: i32, h: i32) {
+    let brush = CreateSolidBrush(0x00FFFFFF);
+    let pen = CreatePen(PS_SOLID, 1, 0x00EADDE5);
+    let old_b = SelectObject(dc, brush);
+    let old_p = SelectObject(dc, pen);
+    RoundRect(dc, x, y, x + w, y + h, 20, 20);
+    SelectObject(dc, old_b);
+    SelectObject(dc, old_p);
+    DeleteObject(brush);
+    DeleteObject(pen);
+}
+
+fn workspace_title_font() -> isize {
+    static FONT: std::sync::OnceLock<isize> = std::sync::OnceLock::new();
+    *FONT.get_or_init(|| unsafe {
+        CreateFontW(
+            -26,
+            0,
+            0,
+            0,
+            600,
+            0,
+            0,
+            0,
+            DEFAULT_CHARSET as u32,
+            0,
+            0,
+            0,
+            0,
+            wide("Microsoft YaHei UI").as_ptr(),
+        )
+    })
 }

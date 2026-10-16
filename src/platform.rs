@@ -20,12 +20,71 @@ use zeroize::Zeroizing;
 #[cfg(feature = "office-state-compat")]
 pub const STATE_NAMESPACE: &str = "OfflineLicenseOfficeRust";
 #[cfg(not(feature = "office-state-compat"))]
-pub const STATE_NAMESPACE: &str = "OfflineLicenseBilingualRust";
+pub const STATE_NAMESPACE: &str = "OfflineLicenseVlcRust";
 pub fn wide(s: &str) -> Vec<u16> {
     s.encode_utf16().chain(Some(0)).collect()
 }
 pub fn root() -> PathBuf {
+    if let Some(value) = std::env::var_os("OFFLINE_LICENSE_VLC_DATA_ROOT") {
+        let path = PathBuf::from(value);
+        if path.is_absolute() && path.file_name().is_some_and(|n| n == STATE_NAMESPACE) {
+            return path;
+        }
+    }
     PathBuf::from(std::env::var_os("LOCALAPPDATA").unwrap_or_default()).join(STATE_NAMESPACE)
+}
+pub fn initialize_installed_root(exe: &Path, info: Option<&PackageInfo>) -> Result<()> {
+    if let Some(info) = info {
+        if exe.file_name().is_some_and(|n| n == "Content.exe") {
+            let resolved = shell_path(exe)?;
+            if let Some(content) = resolved.parent() {
+                let expected = format!("content-{}", info.content_id.simple());
+                if content.file_name().is_some_and(|n| n == expected.as_str()) {
+                    if let Some(apps) = content.parent() {
+                        if apps.file_name().is_some_and(|n| n == "apps") {
+                            if let Some(data) = apps.parent() {
+                                if data.file_name().is_some_and(|n| n == STATE_NAMESPACE) {
+                                    std::env::set_var("OFFLINE_LICENSE_VLC_DATA_ROOT", data);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    Ok(())
+}
+pub fn shell_path(path: &Path) -> Result<PathBuf> {
+    let resolved = fs::canonicalize(path)?;
+    Ok(PathBuf::from(normalize_shell_path(
+        &resolved.to_string_lossy(),
+    )))
+}
+fn normalize_shell_path(path: &str) -> String {
+    if let Some(tail) = path.strip_prefix(r"\\?\UNC\") {
+        format!(r"\\{}", tail)
+    } else {
+        path.strip_prefix(r"\\?\").unwrap_or(path).to_string()
+    }
+}
+#[cfg(test)]
+mod shell_path_tests {
+    #[test]
+    fn extended_paths_are_normalized_for_windows_shell() {
+        assert_eq!(
+            super::normalize_shell_path(r"\\?\D:\some folder\Content.exe"),
+            r"D:\some folder\Content.exe"
+        );
+        assert_eq!(
+            super::normalize_shell_path(r"\\?\UNC\server\share\Content.exe"),
+            r"\\server\share\Content.exe"
+        );
+        assert_eq!(
+            super::normalize_shell_path(r"D:\some folder\Content.exe"),
+            r"D:\some folder\Content.exe"
+        );
+    }
 }
 pub fn replace_file(src: &Path, dst: &Path) -> Result<()> {
     let a = wide(&src.to_string_lossy().replace('/', "\\"));

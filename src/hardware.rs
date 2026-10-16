@@ -489,6 +489,7 @@ mod tests {
         let issuer = Issuer::create()?;
         let public = issuer.spki()?;
         let info = PackageInfo {
+            custom_activation_window: true,
             version: 2,
             content_id: Uuid::new_v4(),
             issuer_fingerprint: fingerprint(&public),

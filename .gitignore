@@ -18,3 +18,11 @@ ui-language.txt
 .env.*
 *.log
 /build/i18n-review.md
+
+/设计参考/
+/源码-*.zip
+/Gemini-*.md
+/SHA256-*.txt
+*.pending.exe
+/build/*-review.md
+/build/*review*.md
