@@ -1,6 +1,17 @@
 # Encrypt your digital assets
 
-[English](README.md) · **当前版本 2.4.3** · Windows x64 · Rust / Win32
+[English](README.md) · Rust · Windows 与 Ubuntu
+
+为视频、音频、演示文稿、图片和文档提供离线加密、设备绑定与 LIC 授权。请按接收方的操作系统选择版本：
+
+| 版本 | 下载 | 源码与使用说明 |
+| --- | --- | --- |
+| Windows x64 · 2.4.3 | [Windows 便携包](https://github.com/shuizhaodemumu/Encrypt-your-digital-assets/releases/tag/v2.4.3) | 仓库根目录；下文为 Windows 说明 |
+| Ubuntu x86_64 · 0.1.0 | [DEB 安装包 / 自带运行库 RUN](https://github.com/shuizhaodemumu/Encrypt-your-digital-assets/releases/tag/ubuntu-v0.1.0) | [Ubuntu 使用与构建](ubuntu/README.zh-CN.md) · [验证范围](ubuntu/VALIDATION.md) |
+
+Ubuntu 自带 VLC、GTK、Poppler 和 LibreOffice，**不创建开机或登录自启动项**；已实测 Ubuntu 26.04.1 x86_64。Windows 的 PPT 由 PowerPoint COM 放映，Ubuntu 使用内置 Impress。内容需要针对目标平台重新打包并签发授权。
+
+## Windows 2.4.3
 
 把视频、PPT、图片和文档打包成加密 Windows EXE，再为接收者签发离线、设备绑定的授权。接收者导出加密设备报告，管理员返回 `.lic` 文件，导入验证后才能打开内容，不需要在线激活服务器。
 

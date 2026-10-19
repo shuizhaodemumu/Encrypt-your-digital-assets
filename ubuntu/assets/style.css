@@ -1,0 +1,20 @@
+window { background: #f5f1fb; color: #30273f; font-family: "Noto Sans CJK SC", "Noto Sans", sans-serif; font-size: 14px; }
+.title { font-size: 27px; font-weight: 750; color: #51376d; }
+.subtitle { font-size: 20px; font-weight: 600; color: #73518f; }
+.section { font-size: 18px; font-weight: 650; margin-bottom: 4px; color: #59406f; }
+.muted { color: #746982; line-height: 1.45; }
+.card { background: alpha(white,0.80); border: 1px solid alpha(#beadd1,0.55); border-radius: 18px; padding: 22px; }
+.file-label { color: #665575; background: alpha(#e9e1f2,0.65); border-radius: 9px; padding: 10px; }
+button { border-radius: 10px; padding: 10px 14px; background-image: none; background-color: alpha(white,0.88); color: #65467e; border: 1px solid #d9cce4; box-shadow: none; }
+button:hover { background-color: #ece3f5; border-color: #aa8fc5; }
+button:active { background-color: #ded0eb; }
+button.suggested-action { background-color: #8863a5; color: white; border-color: #8863a5; font-weight: 650; }
+button.suggested-action:hover { background-color: #76528f; }
+button:disabled { opacity: 0.45; }
+entry, passwordentry, dropdown { border-radius: 9px; min-height: 35px; background-color: alpha(white,0.96); color: #352c42; }
+.status { padding: 12px; background-color: alpha(#e8dff0,0.90); border-radius: 10px; color: #5c456d; }
+.viewer { background: #101015; color: white; }
+.viewer textview, .viewer textview text { background: #fbf8ff; color: #292232; }
+.controls { padding: 10px; border-radius: 14px; background: alpha(#272132,0.94); }
+.controls button { color: #f9f5ff; background: #51415e; border-color: #655276; }
+.viewer-status { color: white; }

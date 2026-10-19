@@ -1,6 +1,17 @@
 # Encrypt your digital assets
 
-[中文说明](README.zh-CN.md) · **Version 2.4.3** · Windows x64 · Rust / Win32
+[中文说明](README.zh-CN.md) · Rust · Windows & Ubuntu
+
+Offline encryption and device-bound licensing for video, audio, presentations, images and documents. Choose the edition for the recipient's operating system:
+
+| Edition | Download | Source and usage |
+| --- | --- | --- |
+| Windows x64 · 2.4.3 | [Portable Windows package](https://github.com/shuizhaodemumu/Encrypt-your-digital-assets/releases/tag/v2.4.3) | Root source; Windows details below |
+| Ubuntu x86_64 · 0.1.0 | [DEB and self-contained RUN](https://github.com/shuizhaodemumu/Encrypt-your-digital-assets/releases/tag/ubuntu-v0.1.0) | [Ubuntu README](ubuntu/README.md) · [Validation](ubuntu/VALIDATION.md) |
+
+Ubuntu bundles VLC, GTK, Poppler and LibreOffice and **does not create boot/login autostart**. It was tested on Ubuntu 26.04.1 x86_64. Windows uses PowerPoint COM for presentations; Ubuntu uses bundled Impress. Content must be packaged and licensed for the target platform.
+
+## Windows 2.4.3
 
 Package a video, presentation, image or document as an encrypted Windows EXE, then issue an offline license for the recipient's device. The recipient exports an encrypted device request; the administrator returns a signed `.lic` file. No online activation service is required.
 
@@ -24,7 +35,7 @@ Container support does not guarantee every codec, resolution or GPU driver. Powe
 
 ## Use the application
 
-Download the current portable package from [Releases](https://github.com/shuizhaodemumu/Encrypt-your-digital-assets/releases). Extract it to a writable directory and run `Packager.exe`. Building from source produces `Packager.exe`, `DeviceTool.exe` and `Packager-Setup.exe` in `程序/`. Binary names and the internal Cargo package remain stable for compatibility; the project display name is **Encrypt your digital assets**.
+Download the current portable package from [Windows 2.4.3](https://github.com/shuizhaodemumu/Encrypt-your-digital-assets/releases/tag/v2.4.3). Extract it to a writable directory and run `Packager.exe`. Building from source produces `Packager.exe`, `DeviceTool.exe` and `Packager-Setup.exe` in `程序/`. Binary names and the internal Cargo package remain stable for compatibility; the project display name is **Encrypt your digital assets**.
 
 1. Create or unlock the issuer key. Keep the `.issuerkey`, password and administrator-only `.olmeta` content catalog private.
 2. Import and preview the original content, then build its encrypted EXE. Send that EXE to the recipient.

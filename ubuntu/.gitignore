@@ -1,0 +1,9 @@
+/target/
+/work/
+/outputs/
+*.issuerkey
+*.lic
+*.olmeta
+*.json.tmp
+*.bin
+*.key
