@@ -6,16 +6,24 @@ Offline encryption and device-bound licensing for video, audio, presentations, i
 
 | Edition | Download | Source and usage |
 | --- | --- | --- |
-| Windows x64 · 2.4.3 | [Portable Windows package](https://github.com/shuizhaodemumu/Encrypt-your-digital-assets/releases/tag/v2.4.3) | Root source; Windows details below |
-| Ubuntu x86_64 · 0.1.0 | [DEB and self-contained RUN](https://github.com/shuizhaodemumu/Encrypt-your-digital-assets/releases/tag/ubuntu-v0.1.0) | [Ubuntu README](ubuntu/README.md) · [Validation](ubuntu/VALIDATION.md) |
+| Windows x64 · 2.5.0 | [Portable Windows package](https://github.com/shuizhaodemumu/Encrypt-your-digital-assets/releases/tag/v2.5.0) | Root source; Windows details below |
+| Ubuntu x86_64 · 0.1.1 | [DEB and self-contained RUN](https://github.com/shuizhaodemumu/Encrypt-your-digital-assets/releases/tag/ubuntu-v0.1.1) | [Ubuntu README](ubuntu/README.md) · [Validation](ubuntu/VALIDATION.md) |
 
 Ubuntu bundles VLC, GTK, Poppler and LibreOffice and **does not create boot/login autostart**. It was tested on Ubuntu 26.04.1 x86_64. Windows uses PowerPoint COM for presentations; Ubuntu uses bundled Impress. Content must be packaged and licensed for the target platform.
 
-## Windows 2.4.3
+## Shared visual identity · October 2026
+
+Windows 2.5.0 adopts the Ubuntu workspace's pale-lavender full-window background, translucent rounded cards, generous spacing and header language switch. Selected content/package labels keep the workflow visible; previews use a compact toolbar so the content remains accessible.
+
+Both editions use the same **white-haired dragon girl holding a purple padlock**. Windows embeds multiple icon sizes in the executable (including newly packaged content), its window and installer; Ubuntu ships matching menu/theme icons in both DEB and RUN packages. Updating the administrator does not rewrite previously distributed content programs.
+
+![Shared application icon](assets/app-icon.png)
+
+## Windows 2.5.0
 
 Package a video, presentation, image or document as an encrypted Windows EXE, then issue an offline license for the recipient's device. The recipient exports an encrypted device request; the administrator returns a signed `.lic` file. No online activation service is required.
 
-![The 2.4.3 licensing workspace](docs/screenshots/workspace-zh.png)
+![The 2.5.0 licensing workspace](docs/screenshots/workspace-zh.png)
 
 ## What it does
 
@@ -29,13 +37,13 @@ Package a video, presentation, image or document as an encrypted Windows EXE, th
 | Licensing | Device-bound signed LIC, configurable first-import window, activation-based usage duration, encrypted issuer-key backups and DPAPI-protected local state. |
 | Login startup | After activation, a verified installed copy is registered under the current user's Windows `Run` key. This runs **after login**, not as a pre-login service. A repair action and CLI removal command are available. |
 | Fault recovery | A heartbeat supervisor restarts faulty/unresponsive playback. The production policy can restart Windows after the third fault restart within ten minutes. Normal pause, close, license expiry and successful video loops are not faults. |
-| Interface | Chinese/English menus and dialogs, live input validation, action prerequisites, confirmation before issuance and saved valid settings. 2.4.3 removes the illustration card frame and blends its edges into the pale full-window background. |
+| Interface | Chinese/English menus and dialogs, live input validation, action prerequisites, confirmation before issuance and saved valid settings. 2.5.0 removes the illustration card frame and blends its edges into the pale full-window background. |
 
 Container support does not guarantee every codec, resolution or GPU driver. PowerPoint and LibreOffice are external prerequisites; neither is bundled.
 
 ## Use the application
 
-Download the current portable package from [Windows 2.4.3](https://github.com/shuizhaodemumu/Encrypt-your-digital-assets/releases/tag/v2.4.3). Extract it to a writable directory and run `Packager.exe`. Building from source produces `Packager.exe`, `DeviceTool.exe` and `Packager-Setup.exe` in `程序/`. Binary names and the internal Cargo package remain stable for compatibility; the project display name is **Encrypt your digital assets**.
+Download the current portable package from [Windows 2.5.0](https://github.com/shuizhaodemumu/Encrypt-your-digital-assets/releases/tag/v2.5.0). Extract it to a writable directory and run `Packager.exe`. `DeviceTool.cmd` opens enrollment; `Install.cmd` installs it for the current user and creates shortcuts. Building from source produces `Packager.exe`, `DeviceTool.exe` and `Packager-Setup.exe` in `程序/`. Binary names and the internal Cargo package remain stable for compatibility; the project display name is **Encrypt your digital assets**.
 
 1. Create or unlock the issuer key. Keep the `.issuerkey`, password and administrator-only `.olmeta` content catalog private.
 2. Import and preview the original content, then build its encrypted EXE. Send that EXE to the recipient.
@@ -91,7 +99,7 @@ This is offline licensing and encrypted distribution, not a guarantee that conte
 
 ## Build from source
 
-Use Windows x64, a recent stable Rust toolchain (edition 2021) and a matching Windows linker. A standard Rust MSVC setup needs Visual Studio C++ Build Tools / Windows SDK; GNU builds need an appropriate MinGW/LLVM linker. `Cargo.lock` pins Rust dependencies.
+Use Windows x64, a recent stable Rust toolchain (edition 2021) and a matching Windows linker. A standard Rust MSVC setup needs Visual Studio C++ Build Tools / Windows SDK (including `rc.exe`); GNU builds need an appropriate MinGW/LLVM linker and `windres`. `build.rs` compiles the icon and common-controls manifest; optional `RC` / `WINDRES` variables select the resource compiler. `Cargo.lock` pins Rust dependencies.
 
 ```powershell
 git clone https://github.com/shuizhaodemumu/Encrypt-your-digital-assets.git
@@ -112,14 +120,14 @@ Desktop scripts need an interactive Windows desktop and a **test build**, plus t
 ```powershell
 cargo build --locked --features watchdog-test-mode
 .\build\ui-test.ps1 -SkipBuild
-.\build\paint-ui-test.ps1 -Version 2.4.3 -CheckSideArtwork -FrameFree
+.\build\paint-ui-test.ps1 -Version 2.5.0
 # Optional media end-to-end regression with a short work/sample.mp4 fixture:
 .\build\video-e2e.ps1 -Formats mp4
 ```
 
 `watchdog-test-mode` disables real machine reboot for tests. Do not enable it in production releases. Do not use real reboot/logoff as an automated acceptance check. Hardware-report/LIC tests create local synthetic issuer data; do not publish their work directories.
 
-23 normal tests passed and one desktop-dependent native test remains ignored in the default suite. Actual GUI checks cover bilingual dialogs, content preview, custom-window issuance/import, modal repaint, borderless illustration pixels and 60 resize/language cycles. MP4 looping/startup recovery and earlier five-container checks have narrower recorded scopes; see [validation history](VALIDATION.md). There is no blanket claim of reboot/login, all codecs, mixed-DPI monitors or every Office version being tested.
+23 normal tests passed and one desktop-dependent native test remains ignored in the default suite. Actual GUI checks cover bilingual dialogs, content preview, custom-window issuance/import, modal repaint, window icon/layout checks and 60 resize/language cycles. MP4 looping/startup recovery and earlier five-container checks have narrower recorded scopes; see [validation history](VALIDATION.md). There is no blanket claim of reboot/login, all codecs, mixed-DPI monitors or every Office version being tested.
 
 ## Source map
 
@@ -132,12 +140,13 @@ cargo build --locked --features watchdog-test-mode
 | `src/presentation.rs`, `src/automation.rs` | PowerPoint host, COM automation and presentation lifecycle |
 | `src/platform.rs`, `src/install.rs`, `src/watchdog.rs` | DPAPI, installation/startup and heartbeat recovery |
 | `src/gui.rs`, `src/i18n.rs` | Win32 UI, bilingual state and layered painting |
+| `build.rs`, `assets/app-icon.*`, `assets/app.rc` | Embedded Windows icons and native-control theme manifest |
 | `build/` | Build and Windows GUI/media regression scripts |
 
 ## Third-party components and artwork
 
 See [third-party notices](第三方说明.md) and `third-party-licenses/` for LibVLC, PDFium and Rust dependency notices. The executable uses dynamic native libraries; there is no .NET/LibVLCSharp dependency in the Rust application. Third-party licenses are not a blanket license for all project artwork.
 
-The right-hand illustration is from the user-provided reference library; its [source index](docs/artwork-provenance.json) records the original attribution. H3 generation attempts for that replacement hit a memory guard, so **the shipped illustration is a library image, not a newly generated H3 result**. Runtime feathering is implemented in Rust.
+The full-window background remains the user-provided library illustration, attributed in the [source index](docs/artwork-provenance.json). The lock-holding mascot was generated by local MiniMax H3 and approved by the user; the built-in image tool adapted it to a transparent square, followed by deterministic ICO/PNG format conversion. The same mascot is used in the Windows footer. See [icon provenance](docs/app-icon-provenance.json).
 
 Private keys, LIC files, device reports, local SDKs, test workspaces, old backups and compiled application bundles are excluded from source commits. Prebuilt downloads belong in Releases rather than source history.

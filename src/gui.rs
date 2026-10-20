@@ -47,6 +47,7 @@ const CLOSE_PLAYER: usize = 117;
 const STARTUP_REPAIR: usize = 118;
 const LANGUAGE_CHINESE: usize = 201;
 const LANGUAGE_ENGLISH: usize = 202;
+const LANGUAGE_TOGGLE: usize = 203;
 pub enum Role {
     Administrator,
     Device,
@@ -419,6 +420,7 @@ impl App {
                 hInstance: instance,
                 lpszClassName: class.as_ptr(),
                 hCursor: LoadCursorW(0, IDC_ARROW),
+                hIcon: LoadIconW(instance, 1usize as *const u16),
                 hbrBackground: theme_brush(),
                 ..std::mem::zeroed()
             };
@@ -438,7 +440,7 @@ impl App {
                 "{title} [TEST BUILD: system restart disabled]"
             );
             let font = CreateFontW(
-                -18,
+                -16,
                 0,
                 0,
                 0,
@@ -528,7 +530,22 @@ impl App {
                 LANGUAGE_ENGLISH,
                 wide("English").as_ptr(),
             );
-            SetMenu(h, app.language_menu);
+            if !matches!(app.role, Role::Administrator) {
+                SetMenu(h, app.language_menu);
+            }
+            SendMessageW(
+                h,
+                WM_SETICON,
+                ICON_SMALL as usize,
+                LoadImageW(
+                    instance,
+                    1usize as *const u16,
+                    IMAGE_ICON,
+                    24,
+                    24,
+                    LR_SHARED,
+                ),
+            );
             app.update_language_menu();
             app.busy = true;
             let initialized = app.initialize();
@@ -591,6 +608,7 @@ impl App {
         self.status = control(self.hwnd, "STATIC", "", 1, 20, 680, 1040, 50, 0, self.font);
         match &self.role {
             Role::Administrator => {
+                self.add("中文 / English", LANGUAGE_TOGGLE, 960, 24, 160);
                 self.add(crate::i18n::text("创建发行者密钥"), CREATE, 44, 150, 210);
                 self.add(crate::i18n::text("恢复 / 解锁密钥"), LOAD, 266, 150, 210);
                 self.add(crate::i18n::text("加密密钥备份"), BACKUP, 44, 198, 210);
@@ -618,7 +636,7 @@ impl App {
                     146,
                     100,
                     36,
-                    WS_BORDER | ES_AUTOHSCROLL as u32 | WS_TABSTOP,
+                    ES_AUTOHSCROLL as u32 | WS_TABSTOP,
                     self.font,
                 );
                 control(
@@ -642,7 +660,7 @@ impl App {
                     194,
                     110,
                     36,
-                    WS_BORDER | ES_AUTOHSCROLL as u32 | WS_TABSTOP,
+                    ES_AUTOHSCROLL as u32 | WS_TABSTOP,
                     self.font,
                 );
                 self.window_unit = control(
@@ -1069,6 +1087,17 @@ impl App {
             }
         }
     }
+    // Keep the full workspace spacious; retain a compact toolbar while previewing.
+    fn compact_workspace(&self) -> bool {
+        self.video.is_some() || self.pdf.is_some() || self.bitmap.is_some() || self.text != 0
+    }
+    fn preview_top(&self) -> i32 {
+        if self.video.is_none() && !self.view_controls.is_empty() {
+            436
+        } else {
+            386
+        }
+    }
     fn layout(&self) {
         unsafe {
             if self.hwnd == 0 {
@@ -1077,11 +1106,7 @@ impl App {
             let mut r: RECT = std::mem::zeroed();
             GetClientRect(self.hwnd, &mut r);
             let top = if matches!(self.role, Role::Administrator) {
-                if self.video.is_none() && !self.view_controls.is_empty() {
-                    436
-                } else {
-                    386
-                }
+                self.preview_top()
             } else if self.fullscreen {
                 0
             } else {
@@ -1100,43 +1125,63 @@ impl App {
                 65
             };
             if matches!(self.role, Role::Administrator) {
-                let half = (r.right - 72) / 2;
-                let left = 44;
-                let right = 68 + half;
-                let button_width = (half - 52) / 2;
-                for (id, column, row) in [
-                    (CREATE, 0, 0),
-                    (LOAD, 1, 0),
-                    (BACKUP, 0, 1),
-                    (IMPORT, 1, 1),
-                    (BUILD, 0, 2),
-                    (SELECT, 1, 2),
-                ] {
+                let half = (r.right - 78) / 2;
+                let left = 50;
+                let right = 76 + half;
+                let inner = half - 44;
+                let button_width = (inner - 12) / 2;
+                MoveWindow(
+                    GetDlgItem(self.hwnd, LANGUAGE_TOGGLE as i32),
+                    r.right - 192,
+                    24,
+                    164,
+                    44,
+                    1,
+                );
+                let compact = self.compact_workspace();
+                let rows = if compact {
+                    vec![
+                        (CREATE, left, 150, button_width, 36),
+                        (LOAD, left + button_width + 12, 150, button_width, 36),
+                        (BACKUP, left, 198, button_width, 36),
+                        (IMPORT, left + button_width + 12, 198, button_width, 36),
+                        (BUILD, left, 246, button_width, 36),
+                        (SELECT, left + button_width + 12, 246, button_width, 36),
+                        (21, right, 150, 170, 30),
+                        (20, right + 180, 146, 95, 36),
+                        (25, right, 198, 170, 36),
+                        (22, right + 180, 194, 95, 36),
+                        (23, right + 287, 194, 120, 180),
+                        (24, right, 244, inner, 48),
+                        (ISSUE, right, 302, inner - 202, 38),
+                        (DEVICE, right + inner - 190, 302, 190, 38),
+                    ]
+                } else {
+                    vec![
+                        (CREATE, left, 264, button_width, 44),
+                        (LOAD, left + button_width + 12, 264, button_width, 44),
+                        (BACKUP, left, 320, inner, 42),
+                        (IMPORT, left, 414, inner, 44),
+                        (BUILD, left, 470, inner, 46),
+                        (SELECT, right, 264, inner, 44),
+                        (21, right, 329, 170, 32),
+                        (20, right + 180, 324, inner - 180, 38),
+                        (25, right, 383, 170, 32),
+                        (22, right + 180, 378, inner - 312, 38),
+                        (23, right + inner - 120, 378, 120, 180),
+                        (24, right, 432, inner, 48),
+                        (ISSUE, right, 494, inner, 46),
+                        (DEVICE, right, 552, inner, 40),
+                    ]
+                };
+                for (id, x, y, width, height) in rows {
                     let h = GetDlgItem(self.hwnd, id as i32);
                     if h != 0 {
-                        MoveWindow(
-                            h,
-                            left + column * (button_width + 12),
-                            150 + row * 48,
-                            button_width,
-                            36,
-                            1,
-                        );
-                    }
-                }
-                for (id, x, y, width, height) in [
-                    (21, right, 150, 170, 30),
-                    (20, right + 180, 146, 95, 36),
-                    (25, right, 198, 170, 36),
-                    (22, right + 180, 194, 95, 36),
-                    (23, right + 287, 194, 120, 160),
-                    (24, right, 244, half - 40, 48),
-                    (ISSUE as i32, right, 302, half - 250, 36),
-                    (DEVICE as i32, right + half - 238, 302, 190, 36),
-                ] {
-                    let h = GetDlgItem(self.hwnd, id);
-                    if h != 0 {
-                        MoveWindow(h, x, y, width, height, 1);
+                        if matches!(id, 20 | 22) {
+                            MoveWindow(h, x + 10, y + 9, (width - 20).max(1), height - 18, 1);
+                        } else {
+                            MoveWindow(h, x, y, width.max(1), height, 1);
+                        }
                     }
                 }
             }
@@ -1414,6 +1459,13 @@ impl App {
     }
     fn command(&mut self, id: usize) -> Result<()> {
         match id {
+            LANGUAGE_TOGGLE => self.change_language(
+                if crate::i18n::current() == crate::i18n::Language::English {
+                    crate::i18n::Language::Chinese
+                } else {
+                    crate::i18n::Language::English
+                },
+            )?,
             LANGUAGE_CHINESE => self.change_language(crate::i18n::Language::Chinese)?,
             LANGUAGE_ENGLISH => self.change_language(crate::i18n::Language::English)?,
             ACTIVATE => {
@@ -2024,63 +2076,117 @@ impl App {
                 draw_artwork(dc, &self.artwork, 0, 0, client.right, client.bottom);
             }
             if matches!(self.role, Role::Administrator) {
-                let half = (client.right - 72) / 2;
-                for x in [24, 48 + half] {
-                    draw_panel(dc, x, 100, half, 260);
+                let half = (client.right - 78) / 2;
+                let compact = self.compact_workspace();
+                let panel_y = if compact { 100 } else { 166 };
+                for x in [28, 50 + half] {
+                    draw_panel(dc, x, panel_y, half, if compact { 260 } else { 450 });
                 }
                 draw_label(
                     dc,
                     workspace_title_font(),
+                    28,
                     24,
-                    22,
-                    client.right - 48,
-                    36,
-                    crate::i18n::text("离线授权工作台"),
-                    0x006B4155,
+                    client.right - 236,
+                    38,
+                    "Encrypt your digital assets",
+                    0x006D3751,
                 );
                 draw_label(
                     dc,
                     self.font,
-                    24,
-                    62,
-                    client.right - 48,
-                    26,
-                    crate::i18n::text(
-                        "先打包内容，再为设备签发授权。首次导入窗口与使用期限独立设置。",
+                    28,
+                    if compact { 66 } else { 84 },
+                    client.right - 56,
+                    30,
+                    crate::tr!(
+                        "Windows · 离线授权工作台",
+                        "Windows · Offline licensing workspace"
                     ),
-                    0x008F7E89,
+                    0x008F5173,
                 );
-                draw_label(
-                    dc,
-                    self.font,
-                    44,
-                    114,
-                    half - 40,
-                    28,
-                    crate::i18n::text("01  内容与发行密钥"),
-                    0x007B536B,
-                );
-                draw_label(
-                    dc,
-                    self.font,
-                    68 + half,
-                    114,
-                    half - 40,
-                    28,
-                    crate::i18n::text("02  授权设置与签发"),
-                    0x007B536B,
-                );
+                if !compact {
+                    draw_label(
+                        dc,
+                        self.font,
+                        28,
+                        126,
+                        client.right - 56,
+                        28,
+                        crate::i18n::text(
+                            "先打包内容，再为设备签发授权。首次导入窗口与使用期限独立设置。",
+                        ),
+                        0x00826974,
+                    );
+                }
+                for (x, caption) in [
+                    (50, "01  内容与发行密钥"),
+                    (76 + half, "02  授权设置与签发"),
+                ] {
+                    draw_label(
+                        dc,
+                        workspace_section_font(),
+                        x,
+                        panel_y + 18,
+                        half - 44,
+                        28,
+                        crate::i18n::text(caption),
+                        0x006F4059,
+                    );
+                }
+                let right = 76 + half;
+                let fields = if compact {
+                    [(right + 180, 146, 95, 36), (right + 180, 194, 95, 36)]
+                } else {
+                    [
+                        (right + 180, 324, half - 224, 38),
+                        (right + 180, 378, half - 356, 38),
+                    ]
+                };
+                for (x, y, w, h) in fields {
+                    draw_input_frame(dc, x, y, w, h);
+                }
+                if !compact {
+                    let key = if self.issuer.is_some() {
+                        crate::tr!("发行者密钥已解锁", "Issuer key unlocked")
+                    } else {
+                        crate::tr!("请创建或解锁发行者密钥", "Create or unlock an issuer key")
+                    };
+                    draw_label(dc, self.font, 50, 230, half - 44, 24, key, 0x00826974);
+                    let source = self
+                        .input
+                        .as_ref()
+                        .and_then(|p| p.file_name())
+                        .map(|v| v.to_string_lossy().into_owned())
+                        .unwrap_or_else(|| {
+                            crate::tr!("尚未选择内容文件", "No content file selected").to_string()
+                        });
+                    let package = self
+                        .catalog
+                        .as_ref()
+                        .map(|c| c.info.display_name.clone())
+                        .unwrap_or_else(|| {
+                            crate::tr!("尚未选择内容程序", "No content package selected")
+                                .to_string()
+                        });
+                    draw_file_label(dc, self.font, 50, 374, half - 44, &source);
+                    draw_file_label(dc, self.font, 76 + half, 222, half - 44, &package);
+                    draw_label(dc, self.font, 50, 542, half - 44, 54,
+                        crate::tr!("视频全屏循环  ·  离线 LIC 验证\nPPT 原文件放映  ·  支持图片 / 文档 / 音频",
+                            "Full-screen video loops · Offline LIC activation\nOriginal PPT slideshows · Images / documents / audio"), 0x00826974);
+                }
             }
             if !self.fullscreen
                 && self.video.is_none()
                 && self.pdf.is_none()
                 && self.bitmap.is_none()
                 && self.text == 0
+                && (!matches!(self.role, Role::Administrator) || client.bottom >= 780)
             {
                 if matches!(self.role, Role::Administrator) {
                     let card_x = client.right - 384;
-                    let card_y = 390;
-                    let card_h = (client.bottom - card_y - 90).clamp(150, 300);
+                    let card_y = 628;
+                    let card_h = (client.bottom - card_y - 72).clamp(40, 220);
                     draw_side_artwork(dc, &self.side_artwork, card_x, card_y, 360, card_h);
                 }
                 SetBkMode(dc, TRANSPARENT as i32);
@@ -2089,13 +2195,13 @@ impl App {
                 let mut title = RECT {
                     left: 40,
                     top: if matches!(self.role, Role::Administrator) {
-                        410
+                        636
                     } else {
                         170
                     },
                     right: (client.right - 400).max(400),
                     bottom: if matches!(self.role, Role::Administrator) {
-                        455
+                        666
                     } else {
                         245
                     },
@@ -2105,18 +2211,23 @@ impl App {
                 let mut subtitle = RECT {
                     left: 40,
                     top: if matches!(self.role, Role::Administrator) {
-                        470
+                        674
                     } else {
                         245
                     },
                     right: (client.right - 400).max(400),
                     bottom: if matches!(self.role, Role::Administrator) {
-                        580
+                        730
                     } else {
                         400
                     },
                 };
-                let label = wide(crate::i18n::text("VLC 播放内核  /  原文件加密\n视频默认全屏循环，移动鼠标到屏幕底部显示控制栏。\n空格 暂停/播放 · ←/→ 跳转10秒 · F11 全屏 · Esc 返回窗口"));
+                let label = wide(if matches!(self.role, Role::Administrator) {
+                    crate::tr!("原文件加密 · 设备绑定授权\n首次导入窗口与激活后的使用期限分别计算。",
+                        "Encrypted originals · Device-bound licenses\nImport deadline and activated usage period are independent.")
+                } else {
+                    crate::i18n::text("VLC 播放内核  /  原文件加密\n视频默认全屏循环，移动鼠标到屏幕底部显示控制栏。\n空格 暂停/播放 · ←/→ 跳转10秒 · F11 全屏 · Esc 返回窗口")
+                });
                 DrawTextW(
                     dc,
                     label.as_ptr(),
@@ -2129,11 +2240,7 @@ impl App {
                 let mut r: RECT = std::mem::zeroed();
                 GetClientRect(self.hwnd, &mut r);
                 let top = if matches!(self.role, Role::Administrator) {
-                    if self.pdf.is_some() {
-                        436
-                    } else {
-                        386
-                    }
+                    self.preview_top()
                 } else {
                     110
                 };
@@ -2297,18 +2404,18 @@ unsafe fn paint_button(l: isize) -> isize {
         0x00EEE9EE
     } else if accent {
         if selected {
-            0x00834E71
+            0x008F5276
         } else {
-            0x00A76E8D
+            0x00A56388
         }
     } else if selected {
-        0x00E9DAE3
+        0x00EBD0DE
     } else {
         0x00FFFFFF
     };
     FillRect(item.hDC, &item.rcItem, theme_brush());
     let brush = CreateSolidBrush(color);
-    let pen = CreatePen(PS_SOLID, 1, 0x00DBC4D2);
+    let pen = CreatePen(PS_SOLID, 1, 0x00E4CCD9);
     let old_brush = SelectObject(item.hDC, brush);
     let old_pen = SelectObject(item.hDC, pen);
     RoundRect(
@@ -2333,7 +2440,7 @@ unsafe fn paint_button(l: isize) -> isize {
         } else if accent {
             0x00FFFFFF
         } else {
-            0x006B4155
+            0x007E4665
         },
     );
     let mut rect = item.rcItem;
@@ -2387,11 +2494,7 @@ unsafe fn dispatch(h: isize, m: u32, w: usize, l: isize) -> isize {
                         SetTextColor(w as isize, if invalid { 0x004343B2 } else { 0x00453735 });
                         let form = matches!(GetDlgCtrlID(l), 21 | 24 | 25)
                             && matches!(app.role, Role::Administrator);
-                        return Ok(Some(if form {
-                            GetStockObject(WHITE_BRUSH)
-                        } else {
-                            theme_brush()
-                        }));
+                        return Ok(Some(if form { card_brush() } else { theme_brush() }));
                     }
                     WM_CTLCOLORBTN => {
                         SetBkMode(w as isize, TRANSPARENT as i32);
@@ -2510,7 +2613,7 @@ unsafe extern "system" fn wndproc(h: isize, m: u32, w: usize, l: isize) -> isize
             SetBkMode(w as isize, TRANSPARENT as i32);
             SetTextColor(w as isize, 0x00453735);
             return if matches!(GetDlgCtrlID(l), 21 | 24 | 25) {
-                GetStockObject(WHITE_BRUSH)
+                card_brush()
             } else {
                 theme_brush()
             };
@@ -2589,17 +2692,17 @@ fn clock(ms: i64) -> String {
 }
 fn theme_brush() -> isize {
     static BRUSH: std::sync::OnceLock<isize> = std::sync::OnceLock::new();
-    *BRUSH.get_or_init(|| unsafe { CreateSolidBrush(0x00FCF6F8) })
+    *BRUSH.get_or_init(|| unsafe { CreateSolidBrush(0x00FBF1F5) })
 }
 fn load_artwork() -> Result<Bitmap> {
-    let img = image::load_from_memory(include_bytes!("../assets/player-art.png"))?.to_rgba8();
+    let img = image::load_from_memory(include_bytes!("../assets/dragon-side.png"))?.to_rgba8();
     let (width, height) = img.dimensions();
     let mut bgra = img.into_raw();
     for pixel in bgra.chunks_exact_mut(4) {
         pixel.swap(0, 2);
-        // Composite the artwork once at 14% opacity over the workspace color.
-        for (channel, base) in pixel[..3].iter_mut().zip([252u16, 246, 248]) {
-            *channel = ((*channel as u16 * 14 + base * 86) / 100) as u8;
+        // Composite the artwork once at 10% opacity over the workspace color.
+        for (channel, base) in pixel[..3].iter_mut().zip([251u16, 241, 245]) {
+            *channel = ((*channel as u16 * 10 + base * 90) / 100) as u8;
         }
         pixel[3] = 255;
     }
@@ -2610,20 +2713,14 @@ fn load_artwork() -> Result<Bitmap> {
     })
 }
 fn load_side_artwork() -> Result<Bitmap> {
-    let image = image::load_from_memory(include_bytes!("../assets/dragon-side.png"))?
+    let image = image::load_from_memory(include_bytes!("../assets/app-icon.png"))?
         .thumbnail(768, 768)
         .to_rgba8();
     let (width, height) = image.dimensions();
     let mut bgra = image.into_raw();
-    // Premultiplied alpha for AC_SRC_ALPHA: feather into the actual canvas,
-    // rather than fading to a solid rectangle or changing window opacity.
-    let feather = width.min(height) as f32 * 0.16;
-    for (index, pixel) in bgra.chunks_exact_mut(4).enumerate() {
-        let x = index as u32 % width;
-        let y = index as u32 / width;
-        let distance = x.min(width - 1 - x).min(y.min(height - 1 - y)) as f32;
-        let t = (distance / feather).clamp(0.0, 1.0);
-        let alpha = (pixel[3] as f32 * t * t * (3.0 - 2.0 * t)).round() as u8;
+    // The icon already has clean transparency; preserve its silhouette.
+    for pixel in bgra.chunks_exact_mut(4) {
+        let alpha = pixel[3];
         pixel.swap(0, 2);
         for channel in &mut pixel[..3] {
             *channel = ((*channel as u16 * alpha as u16 + 127) / 255) as u8;
@@ -2740,23 +2837,110 @@ unsafe fn draw_label(
     let caption = wide(label);
     DrawTextW(dc, caption.as_ptr(), -1, &mut rect, DT_LEFT | DT_WORDBREAK);
 }
-unsafe fn draw_panel(dc: isize, x: i32, y: i32, w: i32, h: i32) {
-    let brush = CreateSolidBrush(0x00FFFFFF);
-    let pen = CreatePen(PS_SOLID, 1, 0x00EADDE5);
-    let old_b = SelectObject(dc, brush);
+fn card_brush() -> isize {
+    static BRUSH: std::sync::OnceLock<isize> = std::sync::OnceLock::new();
+    *BRUSH.get_or_init(|| unsafe { CreateSolidBrush(0x00FDFBFD) })
+}
+unsafe fn draw_input_frame(dc: isize, x: i32, y: i32, w: i32, h: i32) {
+    let pen = CreatePen(PS_SOLID, 1, 0x00D8CCD3);
     let old_p = SelectObject(dc, pen);
-    RoundRect(dc, x, y, x + w, y + h, 20, 20);
+    let old_b = SelectObject(dc, GetStockObject(WHITE_BRUSH));
+    RoundRect(dc, x, y, x + w, y + h, 18, 18);
+    SelectObject(dc, old_b);
+    SelectObject(dc, old_p);
+    DeleteObject(pen);
+}
+unsafe fn draw_panel(dc: isize, x: i32, y: i32, w: i32, h: i32) {
+    let saved = SaveDC(dc);
+    let region = CreateRoundRectRgn(x, y, x + w + 1, y + h + 1, 36, 36);
+    SelectClipRgn(dc, region);
+    let memory = CreateCompatibleDC(dc);
+    let pixel = CreateCompatibleBitmap(dc, 1, 1);
+    let old = SelectObject(memory, pixel);
+    SetPixel(memory, 0, 0, 0x00FFFFFF);
+    AlphaBlend(
+        dc,
+        x,
+        y,
+        w,
+        h,
+        memory,
+        0,
+        0,
+        1,
+        1,
+        BLENDFUNCTION {
+            BlendOp: AC_SRC_OVER as u8,
+            BlendFlags: 0,
+            SourceConstantAlpha: 204,
+            AlphaFormat: 0,
+        },
+    );
+    SelectObject(memory, old);
+    DeleteObject(pixel);
+    DeleteDC(memory);
+    RestoreDC(dc, saved);
+    DeleteObject(region);
+    let pen = CreatePen(PS_SOLID, 1, 0x00E4CCD9);
+    let old_p = SelectObject(dc, pen);
+    let old_b = SelectObject(dc, GetStockObject(NULL_BRUSH));
+    RoundRect(dc, x, y, x + w, y + h, 36, 36);
+    SelectObject(dc, old_b);
+    SelectObject(dc, old_p);
+    DeleteObject(pen);
+}
+unsafe fn draw_file_label(dc: isize, font: isize, x: i32, y: i32, w: i32, value: &str) {
+    let brush = CreateSolidBrush(0x00F2E8EF);
+    let old_b = SelectObject(dc, brush);
+    let old_p = SelectObject(dc, GetStockObject(NULL_PEN));
+    RoundRect(dc, x, y, x + w, y + 32, 14, 14);
     SelectObject(dc, old_b);
     SelectObject(dc, old_p);
     DeleteObject(brush);
-    DeleteObject(pen);
+    SelectObject(dc, font);
+    SetBkMode(dc, TRANSPARENT as i32);
+    SetTextColor(dc, 0x00755566);
+    let mut rect = RECT {
+        left: x + 10,
+        top: y,
+        right: x + w - 10,
+        bottom: y + 32,
+    };
+    DrawTextW(
+        dc,
+        wide(value).as_ptr(),
+        -1,
+        &mut rect,
+        DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS | DT_NOPREFIX,
+    );
+}
+fn workspace_section_font() -> isize {
+    static FONT: std::sync::OnceLock<isize> = std::sync::OnceLock::new();
+    *FONT.get_or_init(|| unsafe {
+        CreateFontW(
+            -18,
+            0,
+            0,
+            0,
+            600,
+            0,
+            0,
+            0,
+            DEFAULT_CHARSET as u32,
+            0,
+            0,
+            0,
+            0,
+            wide("Microsoft YaHei UI").as_ptr(),
+        )
+    })
 }
 
 fn workspace_title_font() -> isize {
     static FONT: std::sync::OnceLock<isize> = std::sync::OnceLock::new();
     *FONT.get_or_init(|| unsafe {
         CreateFontW(
-            -26,
+            -28,
             0,
             0,
             0,

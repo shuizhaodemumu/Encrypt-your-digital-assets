@@ -1,21 +1,22 @@
-# Validation / 验证范围
+# Windows 2.5.0 · Validation / 验证范围
 
-Updated: 2026-10-16 (Asia/Shanghai). Source version: 2.4.3.
+Updated: 2026-10-20 (Asia/Shanghai).
 
-| Scope | Actual result | Limit |
-| --- | --- | --- |
-| Default Rust suite | 23 passed, 0 failed, 1 ignored | The ignored native video test needs a fixture and Windows desktop. |
-| 2.4.0 licensing | GUI 5-minute window / 30-day term, confirmation cancel, settings memory, CLI 2-hour window and recipient import passed | Synthetic issuers; no production credentials published. |
-| 2.4.0 video regression | Real packaged MP4: same PID for 3 loops, pause/resume, seek, fullscreen/dock and registered-copy auth recovery passed | No actual reboot or logoff; one fixture, not all codecs. |
-| 2.3.0 container matrix | MP4/MKV/AVI/MOV/WEBM native and GUI checks recorded | Earlier revision scope; not rerun as a full matrix after every UI-only change. |
-| 2.4.1 repaint | Modal nested owner-draw, minimize/restore and 60 resize/language cycles passed | Mixed-monitor DPI and GDI exhaustion not covered. |
-| 2.4.2 artwork | Actual UI inspected by Codex; source-library image and visible illustration checks passed | H3 replacement generation failed its memory guard; not counted as generated art. |
-| 2.4.3 feathering | Gemini reran paint-ui successfully after a PowerShell test expression fix; language-ui passed separately | Codex then added explicit border/contrast PASS logs and reran locally; this last logging-only run was not a new Gemini run. |
+- Default Rust suite: 23 passed, 1 native desktop fixture test ignored.
+- Actual Windows UI: header language button, attached window icon, 12 controls in minimum/normal/large windows with no clipping or overlaps.
+- Nested modal painting, minimize/restore and 60 resize/language cycles passed; GDI count remained stable.
+- Chinese/English input preservation, synthetic encrypted text/video preview, device/setup/recipient entry points passed.
+- Custom import window: GUI 5-minute/30-day LIC issuance/import, cancellation without output, remembered settings and CLI 2-hour window passed.
+- Actual synthetic packaged MP4: three loops in one PID, hidden full-screen controls, pause/resume, seek and fresh-process startup authorization recovery passed. No actual reboot or logoff.
+- Parsed the production Packager/DeviceTool/Setup PE resources: all seven ICO payload sizes match the source icon, and the common-controls manifest is present.
+- Gemini independently executed the Windows unit, identity/layout, repaint, language/preview and PE-resource commands; all returned code 0. Codex inspected the screenshots and ran the custom-window/media checks.
 
-The automated GUI/media checks use watchdog-test-mode to avoid a real Windows reboot. The production build does not use that feature. Fresh OS installation, actual reboot/login, every Office version, every codec and long-running kiosk deployment are not fully revalidated by these results. Native VLC diagnostic warnings are not claimed eliminated.
+Screenshots in this revision show a test build with a synthetic unlocked issuer/package; they contain no real hardware data or issuer material. Production binaries are separately built without watchdog-test-mode. Windows artwork remains a full-window library background plus the new lock-holding mascot, with provenance in docs/.
 
-## Reproducing desktop checks
+Not revalidated: mixed-monitor DPI, all Windows themes/versions, all codecs, full PowerPoint animation fidelity, real login/reboot and long-running kiosk behavior. The existing Windows startup policy is retained; Ubuntu has no startup registration.
 
-Use an interactive Windows desktop. Build with cargo build --locked --features watchdog-test-mode, then run build/ui-test.ps1 -SkipBuild and build/paint-ui-test.ps1 -Version 2.4.3 -CheckSideArtwork -FrameFree. UI scripts preserve language/issuance preferences and create synthetic data under work/. Test prerequisites are not distributed as personal device reports or keys.
+## Reproduce
 
-For build/video-e2e.ps1 -Formats mp4 provide a short work/sample.mp4. For build/native-matrix.ps1 provide equivalent sample.mp4/mkv/avi/mov/webm files in work/. Do not run GUI scripts concurrently. Do not automate real reboot/logoff. PowerPoint must be installed and activated for real slideshow acceptance; LibreOffice is needed only for Word conversion.
+Build `cargo build --locked --features watchdog-test-mode`, then run `build/identity-ui-test.ps1`, `build/paint-ui-test.ps1 -Version 2.5.0`, `build/ui-test.ps1 -SkipBuild`, `build/window-ui-test.ps1`, and `python build/check-icons.py`. GUI scripts must run sequentially on an interactive desktop. Use `build/video-e2e.ps1 -Formats mp4` with a short synthetic `work/sample.mp4`; do not automate real reboot/logoff.
+
+Historical 2.3–2.4 tests remain available in their release tags. Do not treat those full container/Office checks as rerun by this UI-only update.

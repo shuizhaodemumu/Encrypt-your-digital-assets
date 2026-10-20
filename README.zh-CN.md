@@ -6,16 +6,24 @@
 
 | 版本 | 下载 | 源码与使用说明 |
 | --- | --- | --- |
-| Windows x64 · 2.4.3 | [Windows 便携包](https://github.com/shuizhaodemumu/Encrypt-your-digital-assets/releases/tag/v2.4.3) | 仓库根目录；下文为 Windows 说明 |
-| Ubuntu x86_64 · 0.1.0 | [DEB 安装包 / 自带运行库 RUN](https://github.com/shuizhaodemumu/Encrypt-your-digital-assets/releases/tag/ubuntu-v0.1.0) | [Ubuntu 使用与构建](ubuntu/README.zh-CN.md) · [验证范围](ubuntu/VALIDATION.md) |
+| Windows x64 · 2.5.0 | [Windows 便携包](https://github.com/shuizhaodemumu/Encrypt-your-digital-assets/releases/tag/v2.5.0) | 仓库根目录；下文为 Windows 说明 |
+| Ubuntu x86_64 · 0.1.1 | [DEB 安装包 / 自带运行库 RUN](https://github.com/shuizhaodemumu/Encrypt-your-digital-assets/releases/tag/ubuntu-v0.1.1) | [Ubuntu 使用与构建](ubuntu/README.zh-CN.md) · [验证范围](ubuntu/VALIDATION.md) |
 
 Ubuntu 自带 VLC、GTK、Poppler 和 LibreOffice，**不创建开机或登录自启动项**；已实测 Ubuntu 26.04.1 x86_64。Windows 的 PPT 由 PowerPoint COM 放映，Ubuntu 使用内置 Impress。内容需要针对目标平台重新打包并签发授权。
 
-## Windows 2.4.3
+## 两个平台统一视觉
+
+Windows 2.5.0 采用 Ubuntu 工作台的淡紫色全窗口背景、半透明圆角卡片、宽松排版和页眉语言切换按钮；所选内容/内容包有独立提示，打开预览后使用紧凑工具区。
+
+两个版本统一使用**抱着紫色锁的白发小龙娘**图标。Windows 把多尺寸 ICO 写入 EXE、窗口与安装入口，新打包的内容 EXE 也会继承；Ubuntu 的 DEB/RUN 同时包含菜单图标、窗口图标和八种尺寸。更新管理员程序不会自动修改已分发的旧内容程序。
+
+![统一应用图标](assets/app-icon.png)
+
+## Windows 2.5.0
 
 把视频、PPT、图片和文档打包成加密 Windows EXE，再为接收者签发离线、设备绑定的授权。接收者导出加密设备报告，管理员返回 `.lic` 文件，导入验证后才能打开内容，不需要在线激活服务器。
 
-![2.4.3 授权工作台：淡背景和无白框龙娘插画](docs/screenshots/workspace-zh.png)
+![2.5.0 授权工作台：淡背景和无白框龙娘插画](docs/screenshots/workspace-zh.png)
 
 ## 能做什么
 
@@ -29,7 +37,7 @@ Ubuntu 自带 VLC、GTK、Poppler 和 LibreOffice，**不创建开机或登录�
 | 离线授权 | 加密硬件报告、稳定设备指纹、签名LIC、自定义首次导入窗口、从首次激活起计算使用天数、密钥口令加密备份。 |
 | 登录自启动 | 授权后校验并保存安装副本，写入当前用户Windows Run启动项；在用户登录后启动，不是无人登录时运行的系统服务。提供修复及取消入口。 |
 | 故障恢复 | 后台心跳监测播放故障或失去响应并重启程序；正式版沿用“10分钟内第三次故障重启后，直接重启电脑”的策略。暂停、正常退出、授权到期和正常视频循环不算故障。 |
-| 图形界面 | 中英双语、前置条件禁用、输入实时校验、签发确认、有效设置记忆；2.4.3保留全窗口淡背景，右侧插画取消白框并柔和羽化。 |
+| 图形界面 | 中英双语、前置条件禁用、输入实时校验、签发确认、有效设置记忆；2.5.0保留全窗口淡背景，右侧插画取消白框并柔和羽化。 |
 
 文件扩展名支持不代表所有编码、分辨率和显卡驱动都兼容。PowerPoint和LibreOffice均需自行安装，不随程序分发。
 
@@ -88,6 +96,8 @@ Ubuntu 自带 VLC、GTK、Poppler 和 LibreOffice，**不创建开机或登录�
 
 ## 构建
 
+图标资源由 `build.rs` 编译：MSVC 使用 Windows SDK 的 `rc.exe`，GNU 使用 `windres`；可通过 `RC` / `WINDRES` 指定资源编译器。
+
 需要Windows x64、较新的稳定版Rust及匹配的链接器，使用Rust 2021。常规MSVC环境需Visual Studio C++ Build Tools/Windows SDK；GNU环境需MinGW或LLVM链接器。Rust依赖由`Cargo.lock`固定。
 
 ```powershell
@@ -109,7 +119,7 @@ PowerShell脚本支持`OFFLINE_RUST_SDK`指定现有GNU SDK目录，也会回退
 ```powershell
 cargo build --locked --features watchdog-test-mode
 .\build\ui-test.ps1 -SkipBuild
-.\build\paint-ui-test.ps1 -Version 2.4.3 -CheckSideArtwork -FrameFree
+.\build\paint-ui-test.ps1 -Version 2.5.0
 # 可选：准备work/sample.mp4后运行媒体端到端回归
 .\build\video-e2e.ps1 -Formats mp4
 ```
@@ -135,6 +145,6 @@ cargo build --locked --features watchdog-test-mode
 
 LibVLC、PDFium和Rust依赖声明见[第三方说明](第三方说明.md)及`third-party-licenses/`。本Rust程序动态调用原生库，不依赖.NET/LibVLCSharp。第三方组件许可不等于仓库所有图片的统一授权。
 
-右侧龙娘来自用户提供的素材库，[来源索引](docs/artwork-provenance.json)保留原出处。此前H3新图生成触发内存保护，没有完成，因此**本版插画是素材库原图，不是H3新生成图**；柔化边缘由Rust运行时实现。
+铺满窗口的背景仍来自用户提供的素材库，[背景来源](docs/artwork-provenance.json)保留原出处。抱锁龙娘原图由本地 MiniMax H3 生成并经用户选定，再用内置图像工具适配透明方形图标，最后转换为 ICO/PNG 多尺寸；Windows 页脚也采用同一形象。见[图标来源记录](docs/app-icon-provenance.json)。
 
 私钥、LIC、硬件报告、本机SDK、测试工作目录、旧版备份和成品包不提交源码仓库；可执行下载放在Releases中。

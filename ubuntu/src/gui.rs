@@ -1104,14 +1104,27 @@ fn clock_text(ms: i64) -> String {
 }
 
 pub fn run(content: Option<(PathBuf, PackageInfo)>) -> Result<()> {
+    // Materialize the embedded icon for both standalone content and installed builds.
+    // This is only an icon cache; no login or boot startup entries are created.
+    let icon_root = crate::platform::root().join("icons");
+    let icon_dir = icon_root.join("hicolor/512x512/apps");
+    std::fs::create_dir_all(&icon_dir)?;
+    std::fs::write(icon_root.join("hicolor/index.theme"),
+        "[Icon Theme]\nName=Hicolor\nComment=Encrypt assets embedded fallback\nDirectories=512x512/apps\n\n[512x512/apps]\nSize=512\nContext=Applications\nType=Fixed\n")?;
+    std::fs::write(
+        icon_dir.join("io.github.shuizhaodemumu.EncryptAssetsUbuntu.png"),
+        include_bytes!("../assets/app-icon.png"),
+    )?;
     let app = gtk::Application::builder()
         .application_id("io.github.shuizhaodemumu.EncryptAssetsUbuntu")
         .flags(gio::ApplicationFlags::NON_UNIQUE)
         .build();
     app.connect_activate(move |app| {
+        gtk::Window::set_default_icon_name("io.github.shuizhaodemumu.EncryptAssetsUbuntu");
         let css = gtk::CssProvider::new();
         css.load_from_data(include_str!("../assets/style.css"));
         if let Some(display) = gdk::Display::default() {
+            gtk::IconTheme::for_display(&display).add_search_path(&icon_root);
             gtk::style_context_add_provider_for_display(
                 &display,
                 &css,
@@ -1120,6 +1133,7 @@ pub fn run(content: Option<(PathBuf, PackageInfo)>) -> Result<()> {
         }
         let win = gtk::ApplicationWindow::builder()
             .application(app)
+            .icon_name("io.github.shuizhaodemumu.EncryptAssetsUbuntu")
             .title("Encrypt your digital assets · Ubuntu")
             .default_width(1120)
             .default_height(840)

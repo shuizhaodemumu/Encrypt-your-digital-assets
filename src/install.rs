@@ -108,6 +108,7 @@ pub fn install(source: &Path, info: Option<&PackageInfo>) -> Result<PathBuf> {
         };
         for (n, v) in [
             ("DisplayName", name),
+            ("DisplayIcon", format!("{},0", target.display())),
             ("InstallLocation", dir.display().to_string()),
             ("UninstallString", uninstall),
         ] {

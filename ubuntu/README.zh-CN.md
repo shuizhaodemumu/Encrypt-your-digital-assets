@@ -1,19 +1,21 @@
 # Encrypt your digital assets · Ubuntu 版
 
-Rust 离线内容加密、设备授权和查看工具。独立于上级 Windows 2.4.3，**不创建开机或登录自动启动项**。
+Rust 离线内容加密、设备授权和查看工具。独立于上级 Windows 2.5.0，**不创建开机或登录自动启动项**。
 
-[English](README.md) · **Ubuntu 0.1.0** · [下载安装包](https://github.com/shuizhaodemumu/Encrypt-your-digital-assets/releases/tag/ubuntu-v0.1.0)
+[English](README.md) · **Ubuntu 0.1.1** · [下载安装包](https://github.com/shuizhaodemumu/Encrypt-your-digital-assets/releases/tag/ubuntu-v0.1.1)
 
 ![Ubuntu 授权工作台](docs/workspace-zh.png)
 
 独立目录保存源码、构建脚本与验证说明。详见 [安装与使用](docs/安装与使用.md) 和 [验证记录](VALIDATION.md)。
 
+0.1.1 更新：窗口、DEB/RUN 应用菜单统一采用抱锁白发小龙娘图标，提供八种 PNG 尺寸。保持现有 GTK 布局和加密播放行为，仍不创建开机/登录自启项。
+
 ## 给使用者
 
 在上述 Release 中选择一种安装包；本地源码构建的产物位于 `outputs/`：
 
-- `encrypt-assets-ubuntu_0.1.0_amd64.deb`：Ubuntu 桌面安装包。安装后从应用菜单打开 **Encrypt your digital assets**。
-- `Encrypt-assets-Ubuntu-0.1.0-release-x86_64.run`：离线安装与便携包。可在终端执行 `sh 文件名.run`，首次运行解压到当前用户目录，并建立应用菜单入口。
+- `encrypt-assets-ubuntu_0.1.1_amd64.deb`：Ubuntu 桌面安装包。安装后从应用菜单打开 **Encrypt your digital assets**。
+- `Encrypt-assets-Ubuntu-0.1.1-release-x86_64.run`：离线安装与便携包。可在终端执行 `sh 文件名.run`，首次运行解压到当前用户目录，并建立应用菜单入口。
 
 程序自带 GTK、LibVLC、Poppler、LibreOffice Impress/Writer、Python/UNO、中文字体和配套动态库，用户不需要安装 Rust、Cargo、Docker 或手工配置播放器。安装包约 370 MiB，首次运行解压到用户目录，建议预留至少 2 GiB 空间。
 
@@ -83,7 +85,7 @@ cargo build --locked --release --features watchdog-test-mode
 xvfb-run -a dbus-run-session -- target/release/encrypt-assets-ubuntu --self-check
 xvfb-run -a dbus-run-session -- python3 tests/integration.py target/release/encrypt-assets-ubuntu
 python3 build/bundle.py target/release/encrypt-assets-ubuntu --suffix test
-xvfb-run -a dbus-run-session -- python3 tests/portable.py outputs/Encrypt-assets-Ubuntu-0.1.0-test-x86_64.run
+xvfb-run -a dbus-run-session -- python3 tests/portable.py outputs/Encrypt-assets-Ubuntu-0.1.1-test-x86_64.run
 # 完成测试后构建正式程序（不带测试特性）
 cargo build --locked --release
 python3 build/bundle.py target/release/encrypt-assets-ubuntu --suffix release

@@ -1,3 +1,18 @@
+# Ubuntu 0.1.1 · Icon update validation
+
+Recorded on 2026-10-20, Ubuntu 26.04.1 x86_64.
+
+- Rust formatting, test/production builds and all 13 Rust tests passed.
+- GTK interaction regression passed: prerequisites, invalid/recovered import windows, preserved language/input state and native chooser cancellation.
+- DEB and RUN contain identical production launcher bytes; both desktop entries validate and eight installed icon sizes match their source PNGs.
+- The production RUN launched with isolated state. The visible X11 main window provides its icon; per-user menu entries and the embedded fallback icon match the shipped asset. No boot/login autostart directory was created.
+- The GTK application ID and desktop filename now match for Wayland shell association; Codex also inspected the production app and its new Dock icon on the actual GNOME desktop. GTK's hidden application-leader window is intentionally excluded from the window-icon assertion.
+- Gemini's first round passed six commands and failed the icon assertion because the test selected that hidden helper window. The corrected test checks only the visible window; the second round independently reran GTK and icon checks with exit code 0. Its menu-category hint was addressed by selecting one main category and requiring a clean desktop-file-validate output.
+
+The 0.1.1 update changes application identity/icons, not encryption, licensing, media or Office logic. The full format/offline media matrix below belongs to 0.1.0 and was not repeated for every icon-only edit. Installation checks in this update cover the DEB payload and actual RUN execution, not a new privileged system-wide DEB installation. Build-time installer documentation can precede the final release validation record.
+
+---
+
 # Ubuntu 0.1.0 · Validation
 
 Recorded on 2026-10-19. This summary publishes results without raw device reports, user paths, issuer keys or private test state. It is separate from the root Windows [validation history](../VALIDATION.md).

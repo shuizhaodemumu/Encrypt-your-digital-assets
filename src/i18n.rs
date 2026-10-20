@@ -404,6 +404,15 @@ pub fn caption(value: &str) -> &str {
         .unwrap_or(value)
 }
 #[macro_export]
+macro_rules! tr {
+    ($zh:literal, $en:literal) => {
+        match $crate::i18n::current() {
+            $crate::i18n::Language::Chinese => $zh,
+            $crate::i18n::Language::English => $en,
+        }
+    };
+}
+#[macro_export]
 macro_rules! tr_format {
     ($zh:literal, $en:literal $(, $($args:tt)*)?) => {
         match $crate::i18n::current() {

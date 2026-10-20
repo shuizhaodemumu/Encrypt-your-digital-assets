@@ -1,0 +1,8 @@
+{
+  "date": "2026-10-20",
+  "source": "User-approved H3 dragon girl holding a padlock, art-c20bde8ac7cf/frame-12.png",
+  "adaptation": "Built-in imagegen: transparent square composition; remove floating paper/music notes; preserve white hair, purple eyes/horns/rose/wings, dress, curled tail and lock; no border/text.",
+  "master_sha256": "884dfa45c38bf8af5eca8be74bd8ea74abe1c99472cdeaaf827edeca1d9eb50b",
+  "conversion": "Pillow LANCZOS resizing and multi-resolution ICO encoding only.",
+  "scope": "Windows embedded executable/window/installer icon; Ubuntu GTK window/menu and DEB/RUN icon."
+}
