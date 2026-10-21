@@ -40,6 +40,17 @@ fn button(text: &str, primary: bool) -> gtk::Button {
 fn vertical(space: i32) -> gtk::Box {
     gtk::Box::new(gtk::Orientation::Vertical, space)
 }
+fn set_control_revealed(revealer: &gtk::Revealer, state: &Cell<bool>, reveal: bool) {
+    if state.replace(reveal) == reveal {
+        return;
+    }
+    revealer.set_reveal_child(reveal);
+    #[cfg(feature = "watchdog-test-mode")]
+    if let Some(path) = std::env::var_os("ENCRYPT_ASSETS_TEST_CONTROL_STATE_FILE") {
+        let value = if reveal { "visible\n" } else { "hidden\n" };
+        let _ = std::fs::write(path, value);
+    }
+}
 fn message(win: &gtk::ApplicationWindow, text: &str) {
     let d = gtk::MessageDialog::builder()
         .transient_for(win)
@@ -820,8 +831,20 @@ fn show_content(
     let controls = gtk::Box::new(gtk::Orientation::Horizontal, 10);
     controls.add_css_class("controls");
     controls.set_halign(gtk::Align::Center);
-    controls.set_valign(gtk::Align::End);
-    controls.set_margin_bottom(18);
+    let controls_revealed = Rc::new(Cell::new(true));
+    let controls_revealer = gtk::Revealer::new();
+    controls_revealer.set_transition_type(gtk::RevealerTransitionType::SlideUp);
+    controls_revealer.set_transition_duration(240);
+    controls_revealer.set_child(Some(&controls));
+    let dock = vertical(0);
+    dock.set_halign(gtk::Align::Center);
+    dock.set_valign(gtk::Align::End);
+    dock.set_margin_bottom(8);
+    dock.append(&controls_revealer);
+    let dock_edge = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+    dock_edge.add_css_class("control-dock-edge");
+    dock_edge.set_size_request(240, 7);
+    dock.append(&dock_edge);
     let fullscreen = button(tr("全屏", "Full screen"), false);
     let exit = button(tr("关闭", "Close"), false);
     let progress = label("", "viewer-status");
@@ -925,7 +948,7 @@ fn show_content(
     controls.append(&progress);
     controls.append(&fullscreen);
     controls.append(&exit);
-    overlay.add_overlay(&controls);
+    overlay.add_overlay(&dock);
     win.set_child(Some(&overlay));
     let full = Rc::new(Cell::new(false));
     {
@@ -947,23 +970,33 @@ fn show_content(
     let motion_time = Rc::new(Cell::new(Instant::now()));
     let motion = gtk::EventControllerMotion::new();
     {
-        let (c, t) = (controls.clone(), motion_time.clone());
+        let (c, v, t) = (
+            controls_revealer.clone(),
+            controls_revealed.clone(),
+            motion_time.clone(),
+        );
         motion.connect_motion(move |_, _, _| {
-            c.set_visible(true);
+            set_control_revealed(&c, &v, true);
             t.set(Instant::now());
         });
     }
     overlay.add_controller(motion);
     let keyboard = gtk::EventControllerKey::new();
     {
-        let (w, s, f, c) = (win.clone(), state.clone(), full.clone(), controls.clone());
+        let (w, s, f, c, v) = (
+            win.clone(),
+            state.clone(),
+            full.clone(),
+            controls_revealer.clone(),
+            controls_revealed.clone(),
+        );
         keyboard.connect_key_pressed(move |_, key, _, _| {
             match key {
                 gdk::Key::Escape => {
                     f.set(false);
                     w.unfullscreen();
                     w.set_decorated(true);
-                    c.set_visible(true);
+                    set_control_revealed(&c, &v, true);
                 }
                 gdk::Key::F11 => {
                     f.set(!f.get());
@@ -994,9 +1027,15 @@ fn show_content(
         full.set(true);
         win.set_decorated(false);
         win.fullscreen();
-        controls.set_visible(false);
+        set_control_revealed(&controls_revealer, &controls_revealed, false);
     }
-    let (w, s, f) = (win.downgrade(), state.clone(), full.clone());
+    let (w, s, f, c, v) = (
+        win.downgrade(),
+        state.clone(),
+        full.clone(),
+        controls_revealer.clone(),
+        controls_revealed.clone(),
+    );
     let started = Instant::now();
     glib::timeout_add_local(Duration::from_millis(33), move || {
         let Some(w) = w.upgrade() else {
@@ -1092,7 +1131,7 @@ fn show_content(
             return glib::ControlFlow::Break;
         }
         if f.get() && motion_time.get().elapsed() > Duration::from_secs(3) {
-            controls.set_visible(false);
+            set_control_revealed(&c, &v, false);
         }
         glib::ControlFlow::Continue
     });

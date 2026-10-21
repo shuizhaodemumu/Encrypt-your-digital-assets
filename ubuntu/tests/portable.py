@@ -42,7 +42,7 @@ def main():
             return p
         with ThreadPoolExecutor(max_workers=2) as pool:
             for result in pool.map(lambda _: run(installer, "--version"), range(2)):
-                assert "Ubuntu 0.1.0" in result.stdout
+                assert "Ubuntu 0.1.2" in result.stdout
         assert not list((work / "data/encrypt-assets-runtime").glob(".install-*"))
         print("CONCURRENT_FIRST_INSTALL_ATOMIC_RUNTIME_PASS", flush=True)
         runtime = next((work / "data/encrypt-assets-runtime").glob("*/launch")).parent

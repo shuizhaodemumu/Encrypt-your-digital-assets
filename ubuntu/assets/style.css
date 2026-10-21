@@ -17,4 +17,5 @@ entry, passwordentry, dropdown { border-radius: 9px; min-height: 35px; backgroun
 .viewer textview, .viewer textview text { background: #fbf8ff; color: #292232; }
 .controls { padding: 10px; border-radius: 14px; background: alpha(#272132,0.94); }
 .controls button { color: #f9f5ff; background: #51415e; border-color: #655276; }
+.control-dock-edge { min-height: 7px; border-radius: 4px 4px 0 0; background: alpha(#272132,0.58); }
 .viewer-status { color: white; }

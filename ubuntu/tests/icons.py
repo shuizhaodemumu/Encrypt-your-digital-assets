@@ -18,8 +18,8 @@ def validate_entry(path):
 
 with tempfile.TemporaryDirectory(prefix="icon-check-", dir=ROOT/"work") as tmp:
     temp=Path(tmp)
-    deb=ROOT/"outputs/encrypt-assets-ubuntu_0.1.1_amd64.deb"
-    run=ROOT/"outputs/Encrypt-assets-Ubuntu-0.1.1-release-x86_64.run"
+    deb=ROOT/"outputs/encrypt-assets-ubuntu_0.1.2_amd64.deb"
+    run=ROOT/"outputs/Encrypt-assets-Ubuntu-0.1.2-release-x86_64.run"
     subprocess.run(["dpkg-deb","-x",str(deb),str(temp/"deb")],check=True)
     entry=temp/f"deb/usr/share/applications/{APP}.desktop"
     validate_entry(entry)
@@ -33,7 +33,7 @@ with tempfile.TemporaryDirectory(prefix="icon-check-", dir=ROOT/"work") as tmp:
     env=dict(os.environ,XDG_DATA_HOME=str(temp/"data"),XDG_CONFIG_HOME=str(temp/"config"),
         ENCRYPT_ASSETS_DATA_DIR=str(temp/"state"),GDK_BACKEND="x11",GSK_RENDERER="cairo")
     version=subprocess.check_output(["sh",str(run),"--version"],env=env,text=True).strip()
-    assert version=="Encrypt your digital assets Ubuntu 0.1.1",version
+    assert version=="Encrypt your digital assets Ubuntu 0.1.2",version
     with (temp/"app.log").open("w") as log:
         child=subprocess.Popen(["sh",str(run)],env=env,stdout=log,stderr=log,start_new_session=True)
         try:

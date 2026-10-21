@@ -1,3 +1,15 @@
+# Ubuntu 0.1.2 · Video control auto-hide repair
+
+Recorded on 2026-10-21, Ubuntu 26.04.1 x86_64 in VirtualBox.
+
+- `cargo fmt --check`, locked Rust tests (13 passed), and optimized release build passed.
+- GTK video regression used a temporary synthetic MP4, temporary issuer/LIC, Xvfb and `watchdog-test-mode`: the control bar slid into the bottom dock after 3 seconds idle, then slid back out on mouse movement.
+- Production DEB/RUN were rebuilt. Their embedded application binaries match; desktop entries and all eight installed icon sizes passed, and the production RUN opened its administrator window without creating startup entries.
+- The isolated test RUN disabled networking and hid host GTK/VLC/Office/Python components. MP4, M4A, PDF, DOCX and PPTX completed pack → encrypted device request → LIC issuance → activation → playback/viewing. MP4 playback repeated three times in the same player. Normal close, cleanup of application/Office child processes, and unchanged autostart state passed.
+- The full functional matrix uses the `watchdog-test-mode` package so fault checks cannot reboot the VM. The DEB was inspected and extracted, not installed system-wide. A human review of the released interface on a physical Ubuntu desktop was not performed in this release check.
+
+---
+
 # Ubuntu 0.1.1 · Icon update validation
 
 Recorded on 2026-10-20, Ubuntu 26.04.1 x86_64.
