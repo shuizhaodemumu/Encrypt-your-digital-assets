@@ -36,6 +36,7 @@ def main():
             GTK_USE_PORTAL="0",
             GDK_BACKEND="x11",
             GSK_RENDERER="cairo",
+            ENCRYPT_ASSETS_TEST_POINTER_LOG_FILE=str(work / "pointer-events.txt"),
         )
         video = work / "sample.mp4"
         subprocess.run(
@@ -83,9 +84,36 @@ def main():
                 except OSError:
                     return ""
 
+            def pointer_event_count():
+                try:
+                    return len((work / "pointer-events.txt").read_text().splitlines())
+                except OSError:
+                    return 0
+
             wait_for(lambda: state() == "visible")
-            wait_for(lambda: state() == "hidden", seconds=8)
-            print("CONTROL_BAR_IDLE_3S_SLIDES_TO_BOTTOM_PASS", flush=True)
+            last_events = pointer_event_count()
+            last_motion_seen = time.monotonic()
+            deadline = time.monotonic() + 5
+            while time.monotonic() < deadline:
+                events = pointer_event_count()
+                now = time.monotonic()
+                if events != last_events:
+                    last_events = events
+                    last_motion_seen = now
+                if state() == "hidden":
+                    idle_elapsed = now - last_motion_seen
+                    if idle_elapsed < 0.8:
+                        time.sleep(0.05)
+                        continue
+                    if idle_elapsed > 2.2:
+                        raise AssertionError(f"Controls hid too late after last pointer movement: {idle_elapsed:.2f}s")
+                    break
+                if now - last_motion_seen > 2.2:
+                    raise AssertionError(f"Controls remained visible {now - last_motion_seen:.2f}s after pointer stopped")
+                time.sleep(0.05)
+            else:
+                raise AssertionError("Controls did not reach the hidden GTK state")
+            print(f"CONTROL_BAR_IDLE_1S_SLIDES_TO_BOTTOM_PASS ({idle_elapsed:.2f}s)", flush=True)
 
             subprocess.run(["xdotool", "mousemove_relative", "15", "15"], check=True)
             wait_for(lambda: state() == "visible", seconds=3)

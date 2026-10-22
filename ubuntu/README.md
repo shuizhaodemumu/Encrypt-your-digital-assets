@@ -1,21 +1,21 @@
 # Encrypt your digital assets · Ubuntu
 
-[中文说明](README.zh-CN.md) · **Ubuntu 0.1.2** · Linux x86_64 · Rust / GTK4
+[中文说明](README.zh-CN.md) · **Ubuntu 0.1.3** · Linux x86_64 · Rust / GTK4
 
 Encrypt video, audio, presentations, images and documents into a distributable Linux application. The recipient exports an encrypted device request; the administrator issues a signed, device-bound `.lic` file for offline activation. **This edition creates no boot or login autostart entry.**
 
 ![Ubuntu licensing workspace](docs/workspace-zh.png)
 
-Version 0.1.2 fixes the video control bar: after 3 seconds without pointer movement it slides down into a slim bottom dock, and pointer motion slides it back up. Video continues looping in the same player window. No boot/login autostart is added.
+Version 0.1.3 fixes the video control bar: after 1 second without pointer movement it slides down into a slim bottom dock, and pointer motion slides it back up. Video continues looping in the same player window. No boot/login autostart is added.
 
 ## Install
 
-Download from [Ubuntu 0.1.2 Releases](https://github.com/shuizhaodemumu/Encrypt-your-digital-assets/releases/tag/ubuntu-v0.1.2). Choose either:
+Download from [Ubuntu 0.1.3 Releases](https://github.com/shuizhaodemumu/Encrypt-your-digital-assets/releases/tag/ubuntu-v0.1.3). Choose either:
 
 | Download | Use |
 | --- | --- |
-| `encrypt-assets-ubuntu_0.1.2_amd64.deb` | Install with the Ubuntu software installer, then open **Encrypt your digital assets** from the application menu. |
-| `Encrypt-assets-Ubuntu-0.1.2-release-x86_64.run` | Run `sh ./Encrypt-assets-Ubuntu-0.1.2-release-x86_64.run`; no sudo is required. |
+| `encrypt-assets-ubuntu_0.1.3_amd64.deb` | Install with the Ubuntu software installer, then open **Encrypt your digital assets** from the application menu. |
+| `Encrypt-assets-Ubuntu-0.1.3-release-x86_64.run` | Run `sh ./Encrypt-assets-Ubuntu-0.1.3-release-x86_64.run`; no sudo is required. |
 
 The packages bundle GTK, VLC and its plugins, Poppler, LibreOffice Writer/Impress, Python/UNO, Noto CJK fonts and their native libraries. Users do not need Rust, Cargo, Docker or a separate Office/player installation. First launch verifies and extracts a shared per-user runtime. Allow at least 2 GiB of free space, plus space for source files and encrypted content. Downloads are about 370 MiB each; the extracted runtime is about 910 MiB.
 
@@ -72,7 +72,7 @@ cargo build --locked --release --features watchdog-test-mode
 xvfb-run -a dbus-run-session -- target/release/encrypt-assets-ubuntu --self-check
 xvfb-run -a dbus-run-session -- python3 tests/integration.py target/release/encrypt-assets-ubuntu
 python3 build/bundle.py target/release/encrypt-assets-ubuntu --suffix test
-xvfb-run -a dbus-run-session -- python3 tests/portable.py outputs/Encrypt-assets-Ubuntu-0.1.2-test-x86_64.run
+xvfb-run -a dbus-run-session -- python3 tests/portable.py outputs/Encrypt-assets-Ubuntu-0.1.3-test-x86_64.run
 # Production build: omit the test feature after finishing tests.
 cargo build --locked --release
 python3 build/bundle.py target/release/encrypt-assets-ubuntu --suffix release

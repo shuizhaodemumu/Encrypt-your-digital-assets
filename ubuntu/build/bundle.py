@@ -258,7 +258,7 @@ exit 0
         if calculated == offset:
             break
         offset = calculated
-    runfile = out / f"Encrypt-assets-Ubuntu-0.1.2-{suffix}-x86_64.run"
+    runfile = out / f"Encrypt-assets-Ubuntu-0.1.3-{suffix}-x86_64.run"
     with runfile.open("wb") as f:
         f.write(text.encode("utf-8"))
         with archive.open("rb") as a:
@@ -270,10 +270,10 @@ exit 0
         target = deb / "opt/encrypt-assets-ubuntu"
         target.mkdir(parents=True)
         shutil.copy2(runfile, target / "EncryptAssetsUbuntu.run")
-        write(deb / "DEBIAN/control", "Package: encrypt-assets-ubuntu\nVersion: 0.1.2\nArchitecture: amd64\nMaintainer: shuizhaodemumu\nSection: utils\nPriority: optional\nDepends: bash, coreutils, tar, gzip\nDescription: Offline encrypted media licensing desktop\n Includes private GTK, VLC, Poppler, LibreOffice and Python runtimes.\n Does not install login or boot autostart entries.\n")
+        write(deb / "DEBIAN/control", "Package: encrypt-assets-ubuntu\nVersion: 0.1.3\nArchitecture: amd64\nMaintainer: shuizhaodemumu\nSection: utils\nPriority: optional\nDepends: bash, coreutils, tar, gzip\nDescription: Offline encrypted media licensing desktop\n Includes private GTK, VLC, Poppler, LibreOffice and Python runtimes.\n Does not install login or boot autostart entries.\n")
         write(deb / "usr/share/applications/io.github.shuizhaodemumu.EncryptAssetsUbuntu.desktop", "[Desktop Entry]\nType=Application\nName=Encrypt your digital assets\nName[zh_CN]=离线内容加密与授权\nExec=/opt/encrypt-assets-ubuntu/EncryptAssetsUbuntu.run\nIcon=io.github.shuizhaodemumu.EncryptAssetsUbuntu\nTerminal=false\nCategories=Utility;\nStartupWMClass=io.github.shuizhaodemumu.EncryptAssetsUbuntu\n")
         copytree(ROOT / "assets/icons/hicolor", deb / "usr/share/icons/hicolor")
-        subprocess.run(["dpkg-deb", "--build", "--root-owner-group", "-Zgzip", "-z1", str(deb), str(out / "encrypt-assets-ubuntu_0.1.2_amd64.deb")], check=True)
+        subprocess.run(["dpkg-deb", "--build", "--root-owner-group", "-Zgzip", "-z1", str(deb), str(out / "encrypt-assets-ubuntu_0.1.3_amd64.deb")], check=True)
     return runfile
 
 if __name__ == "__main__":

@@ -1,9 +1,16 @@
-# Ubuntu 0.1.2 · Video control auto-hide repair
+# Ubuntu 0.1.3 · Video control auto-hide regression
+- User reported that controls remained visible in real playback even though the 0.1.2 automated test passed. Review found the test recorded the requested reveal state before GTK completed the animation; it did not prove the widget was actually hidden.
+- The motion handler now resets the idle clock only when pointer coordinates change. The controls slide down after 1 second idle; real mouse movement slides them out.
+- Regression instrumentation now records `GtkRevealer::is_child_revealed()` after the transition, and the test asserts the 1-second hide completes within 2 seconds.
+- Validation: Rust format check and optimized watchdog test build passed. Xvfb + D-Bus GTK regression passed: `CONTROL_BAR_IDLE_1S_SLIDES_TO_BOTTOM_PASS (1.04s)` and `CONTROL_BAR_MOUSE_MOTION_SLIDES_OUT_PASS`.
+- Production build passed. Thirteen Rust tests passed; the `.deb` metadata reports `encrypt-assets-ubuntu 0.1.3 amd64`, the bundled RUN reports `Encrypt your digital assets Ubuntu 0.1.3`, and the DEB, RUN, and source archive have SHA-256 entries in `outputs/SHA256SUMS.txt`.
+- The 0.1.3 DEB was staged in the Ubuntu VM Downloads folder and its hash matched the build output. Follow-up acceptance on 2026-10-22 purged 0.1.2, installed 0.1.3, confirmed the installed package version with `dpkg-query`, and opened the application from its desktop entry; the user accepted the release. No actual system restart or autostart behavior is involved in this UI change.
+
 
 Recorded on 2026-10-21, Ubuntu 26.04.1 x86_64 in VirtualBox.
 
 - `cargo fmt --check`, locked Rust tests (13 passed), and optimized release build passed.
-- GTK video regression used a temporary synthetic MP4, temporary issuer/LIC, Xvfb and `watchdog-test-mode`: the control bar slid into the bottom dock after 3 seconds idle, then slid back out on mouse movement.
+- The original 0.1.2 GTK regression checked only the requested state and was not sufficient to confirm the completed hide animation; see the 0.1.3 correction above.
 - Production DEB/RUN were rebuilt. Their embedded application binaries match; desktop entries and all eight installed icon sizes passed, and the production RUN opened its administrator window without creating startup entries.
 - The isolated test RUN disabled networking and hid host GTK/VLC/Office/Python components. MP4, M4A, PDF, DOCX and PPTX completed pack → encrypted device request → LIC issuance → activation → playback/viewing. MP4 playback repeated three times in the same player. Normal close, cleanup of application/Office child processes, and unchanged autostart state passed.
 - The full functional matrix uses the `watchdog-test-mode` package so fault checks cannot reboot the VM. The DEB was inspected and extracted, not installed system-wide. A human review of the released interface on a physical Ubuntu desktop was not performed in this release check.

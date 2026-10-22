@@ -7,7 +7,7 @@ Offline encryption and device-bound licensing for video, audio, presentations, i
 | Edition | Download | Source and usage |
 | --- | --- | --- |
 | Windows x64 · 2.5.0 | [Portable Windows package](https://github.com/shuizhaodemumu/Encrypt-your-digital-assets/releases/tag/v2.5.0) | Root source; Windows details below |
-| Ubuntu x86_64 · 0.1.2 | [DEB and self-contained RUN](https://github.com/shuizhaodemumu/Encrypt-your-digital-assets/releases/tag/ubuntu-v0.1.2) | [Ubuntu README](ubuntu/README.md) · [Validation](ubuntu/VALIDATION.md) |
+| Ubuntu x86_64 · 0.1.3 | [DEB and self-contained RUN](https://github.com/shuizhaodemumu/Encrypt-your-digital-assets/releases/tag/ubuntu-v0.1.3) | [Ubuntu README](ubuntu/README.md) · [Validation](ubuntu/VALIDATION.md) |
 
 Ubuntu bundles VLC, GTK, Poppler and LibreOffice and **does not create boot/login autostart**. It was tested on Ubuntu 26.04.1 x86_64. Windows uses PowerPoint COM for presentations; Ubuntu uses bundled Impress. Content must be packaged and licensed for the target platform.
 

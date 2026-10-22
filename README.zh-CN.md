@@ -7,7 +7,7 @@
 | 版本 | 下载 | 源码与使用说明 |
 | --- | --- | --- |
 | Windows x64 · 2.5.0 | [Windows 便携包](https://github.com/shuizhaodemumu/Encrypt-your-digital-assets/releases/tag/v2.5.0) | 仓库根目录；下文为 Windows 说明 |
-| Ubuntu x86_64 · 0.1.2 | [DEB 安装包 / 自带运行库 RUN](https://github.com/shuizhaodemumu/Encrypt-your-digital-assets/releases/tag/ubuntu-v0.1.2) | [Ubuntu 使用与构建](ubuntu/README.zh-CN.md) · [验证范围](ubuntu/VALIDATION.md) |
+| Ubuntu x86_64 · 0.1.3 | [DEB 安装包 / 自带运行库 RUN](https://github.com/shuizhaodemumu/Encrypt-your-digital-assets/releases/tag/ubuntu-v0.1.3) | [Ubuntu 使用与构建](ubuntu/README.zh-CN.md) · [验证范围](ubuntu/VALIDATION.md) |
 
 Ubuntu 自带 VLC、GTK、Poppler 和 LibreOffice，**不创建开机或登录自启动项**；已实测 Ubuntu 26.04.1 x86_64。Windows 的 PPT 由 PowerPoint COM 放映，Ubuntu 使用内置 Impress。内容需要针对目标平台重新打包并签发授权。
 

@@ -47,8 +47,19 @@ fn set_control_revealed(revealer: &gtk::Revealer, state: &Cell<bool>, reveal: bo
     revealer.set_reveal_child(reveal);
     #[cfg(feature = "watchdog-test-mode")]
     if let Some(path) = std::env::var_os("ENCRYPT_ASSETS_TEST_CONTROL_STATE_FILE") {
-        let value = if reveal { "visible\n" } else { "hidden\n" };
-        let _ = std::fs::write(path, value);
+        // Report the rendered GTK state after its slide animation, not merely
+        // the requested state; the regression test must catch a stuck widget.
+        let revealer = revealer.downgrade();
+        glib::timeout_add_local_once(Duration::from_millis(300), move || {
+            if let Some(revealer) = revealer.upgrade() {
+                let value = if revealer.is_child_revealed() {
+                    "visible\n"
+                } else {
+                    "hidden\n"
+                };
+                let _ = std::fs::write(path, value);
+            }
+        });
     }
 }
 fn message(win: &gtk::ApplicationWindow, text: &str) {
@@ -967,19 +978,43 @@ fn show_content(
         let w = win.clone();
         exit.connect_clicked(move |_| w.close());
     }
+    const CONTROL_IDLE_TIMEOUT: Duration = Duration::from_secs(1);
     let motion_time = Rc::new(Cell::new(Instant::now()));
+    let last_pointer = Rc::new(Cell::new(None::<(f64, f64)>));
     let motion = gtk::EventControllerMotion::new();
     {
-        let (c, v, t) = (
+        let (c, v, t, p) = (
             controls_revealer.clone(),
             controls_revealed.clone(),
             motion_time.clone(),
+            last_pointer.clone(),
         );
-        motion.connect_motion(move |_, _, _| {
-            set_control_revealed(&c, &v, true);
-            t.set(Instant::now());
+        motion.connect_motion(move |_, x, y| {
+            let moved = p
+                .get()
+                .map(|(last_x, last_y)| (x - last_x).abs() > 0.5 || (y - last_y).abs() > 0.5)
+                .unwrap_or(true);
+            p.set(Some((x, y)));
+            if moved {
+                #[cfg(feature = "watchdog-test-mode")]
+                if let Some(path) = std::env::var_os("ENCRYPT_ASSETS_TEST_POINTER_LOG_FILE") {
+                    if let Ok(mut log) = std::fs::OpenOptions::new()
+                        .create(true)
+                        .append(true)
+                        .open(path)
+                    {
+                        use std::io::Write;
+                        let _ = writeln!(log, "{x:.2},{y:.2}");
+                    }
+                }
+                set_control_revealed(&c, &v, true);
+                t.set(Instant::now());
+            }
         });
     }
+    // Observe pointer motion before child widgets (especially VLC/video and
+    // control buttons) can stop event propagation.
+    motion.set_propagation_phase(gtk::PropagationPhase::Capture);
     overlay.add_controller(motion);
     let keyboard = gtk::EventControllerKey::new();
     {
@@ -1130,7 +1165,7 @@ fn show_content(
             w.close();
             return glib::ControlFlow::Break;
         }
-        if f.get() && motion_time.get().elapsed() > Duration::from_secs(3) {
+        if f.get() && motion_time.get().elapsed() >= CONTROL_IDLE_TIMEOUT {
             set_control_revealed(&c, &v, false);
         }
         glib::ControlFlow::Continue

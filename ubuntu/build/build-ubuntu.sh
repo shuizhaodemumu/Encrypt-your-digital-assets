@@ -10,4 +10,4 @@ ENCRYPT_ASSETS_DATA_DIR="$test_state" cargo test --locked --features watchdog-te
 cargo build --locked --release
 python3 build/bundle.py target/release/encrypt-assets-ubuntu --suffix release
 cd outputs
-sha256sum Encrypt-assets-Ubuntu-0.1.2-release-x86_64.run encrypt-assets-ubuntu_0.1.2_amd64.deb > SHA256SUMS.txt
+sha256sum Encrypt-assets-Ubuntu-0.1.3-release-x86_64.run encrypt-assets-ubuntu_0.1.3_amd64.deb > SHA256SUMS.txt
