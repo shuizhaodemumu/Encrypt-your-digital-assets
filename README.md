@@ -1,6 +1,6 @@
 # Encrypt your digital assets
 
-[中文说明](README.zh-CN.md) · Rust · Windows & Ubuntu
+[中文说明](README.zh-CN.md) · Rust · Windows · Ubuntu · Android
 
 Offline encryption and device-bound licensing for video, audio, presentations, images and documents. Choose the edition for the recipient's operating system:
 
@@ -8,8 +8,11 @@ Offline encryption and device-bound licensing for video, audio, presentations, i
 | --- | --- | --- |
 | Windows x64 · 2.5.0 | [Portable Windows package](https://github.com/shuizhaodemumu/Encrypt-your-digital-assets/releases/tag/v2.5.0) | Root source; Windows details below |
 | Ubuntu x86_64 · 0.1.3 | [DEB and self-contained RUN](https://github.com/shuizhaodemumu/Encrypt-your-digital-assets/releases/tag/ubuntu-v0.1.3) | [Ubuntu README](ubuntu/README.md) · [Validation](ubuntu/VALIDATION.md) |
+| Android ARM64 · 0.1.0 preview | [Android APK + dedicated Windows administrator](https://github.com/shuizhaodemumu/Encrypt-your-digital-assets/releases/tag/android-v0.1.0-preview) | [Android source and usage](android/README.md) · [Validation](android/VALIDATION.md) |
 
 Ubuntu bundles VLC, GTK, Poppler and LibreOffice and **does not create boot/login autostart**. It was tested on Ubuntu 26.04.1 x86_64. Windows uses PowerPoint COM for presentations; Ubuntu uses bundled Impress. Content must be packaged and licensed for the target platform.
+
+**Android is a video-only preview.** It uses a standalone APK and encrypted `.eav` files. Its dedicated Windows administrator opens a GUI on double-click and is separate from the original Windows administrator, issuer keys and LIC files. Tested on one Android 16 ARM64 device.
 
 ## Shared visual identity · October 2026
 

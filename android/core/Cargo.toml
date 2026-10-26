@@ -1,0 +1,39 @@
+[package]
+name = "encrypt-video-core"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+
+[lib]
+name = "encrypt_video"
+crate-type = ["rlib", "cdylib"]
+
+[[bin]]
+name = "video-admin"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1"
+aes-gcm = "0.10"
+base64 = "0.22"
+hex = "0.4"
+jni = "0.21.1"
+p256 = { version = "0.13", features = ["ecdsa", "pkcs8"] }
+pbkdf2 = "0.12"
+rand = "0.8"
+rsa = { version = "0.9", features = ["sha2"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha1 = { version = "0.10", features = ["oid"] }
+sha2 = { version = "0.10", features = ["oid"] }
+zeroize = "1"
+
+[target.'cfg(windows)'.dependencies]
+image = { version = "0.25", default-features = false, features = ["png"] }
+windows-sys = { version = "0.52", features = ["Win32_Foundation", "Win32_Graphics_Gdi", "Win32_System_LibraryLoader", "Win32_System_Console", "Win32_UI_WindowsAndMessaging", "Win32_UI_Controls_Dialogs", "Win32_UI_Input_KeyboardAndMouse"] }
+
+[profile.release]
+opt-level = 2
+lto = "thin"
+strip = true
+panic = "abort"

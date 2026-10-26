@@ -1,0 +1,7 @@
+/work/
+/outputs/
+/core/target/
+*.eav
+*.lic
+*.issuerkey
+*.adminmeta
