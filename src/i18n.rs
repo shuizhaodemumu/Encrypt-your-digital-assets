@@ -11,6 +11,8 @@ pub enum Language {
 }
 static LANGUAGE: AtomicU8 = AtomicU8::new(0);
 pub const CATALOGUE: &[(&str, &str)] = &[
+    ("导入内容包", "Import content"),
+    ("正在采集机器系统指纹", "Collecting system fingerprint"),
     ("此内容由旧版打包，仅支持60秒。自定义窗口请重新打包原文件。","This package supports only 60 seconds. Repackage the original file to customize the window."),
 
     ("离线授权 · 你的专属播放空间", "Private content · offline access"),

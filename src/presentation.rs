@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use std::{
     fs,
     io::{Read, Write},
-    os::windows::process::CommandExt,
+    os::windows::{fs::OpenOptionsExt, process::CommandExt},
     path::{Path, PathBuf},
     process::{Child, Command, Stdio},
     sync::{
@@ -146,6 +146,24 @@ fn cleanup(dir: &Path) {
     }
     let _ = fs::remove_dir(dir);
 }
+pub fn cleanup_abandoned() {
+    let Ok(entries) = fs::read_dir(root()) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let dir = entry.path();
+        if checked_dir(&dir).is_err() {
+            continue;
+        }
+        let lock = dir.join("session.lock");
+        if lock.is_file() {
+            if let Ok(handle) = fs::OpenOptions::new().write(true).share_mode(0).open(&lock) {
+                drop(handle);
+                cleanup(&dir);
+            }
+        }
+    }
+}
 fn property(token: &str) -> Vec<u16> {
     platform::wide(&format!("{}-PPT-{token}", platform::STATE_NAMESPACE))
 }
@@ -204,6 +222,7 @@ fn slideshow_windows(file_name: &str) -> Vec<isize> {
     search.windows
 }
 pub struct Presentation {
+    session_lock: Option<fs::File>,
     child: Child,
     dir: PathBuf,
     token: String,
@@ -233,14 +252,21 @@ impl Presentation {
             a.lock().unwrap().validate()?;
         }
         fs::create_dir_all(root())?;
+        cleanup_abandoned();
         let dir = root().join(uuid::Uuid::new_v4().to_string());
         fs::create_dir(&dir)?;
+        let session_lock = fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .share_mode(0)
+            .open(dir.join("session.lock"))?;
         let result = (|| {
             let token = uuid::Uuid::new_v4().simple().to_string();
             let content = dir.join(format!("content-{token}.{ext}"));
             let mut file = fs::File::options()
                 .write(true)
                 .create_new(true)
+                .custom_flags(windows_sys::Win32::Storage::FileSystem::FILE_ATTRIBUTE_TEMPORARY | windows_sys::Win32::Storage::FileSystem::FILE_ATTRIBUTE_NOT_CONTENT_INDEXED)
                 .open(&content)?;
             let mut buffer = zeroize::Zeroizing::new(vec![0u8; CHUNK]);
             loop {
@@ -287,6 +313,7 @@ impl Presentation {
                 .stderr(Stdio::null())
                 .spawn()?;
             Ok(Self {
+                session_lock: Some(session_lock),
                 child,
                 dir: dir.clone(),
                 token,
@@ -386,6 +413,7 @@ impl Presentation {
             let _ = self.child.kill();
             let _ = self.child.wait();
         }
+        self.session_lock.take();
         cleanup(&self.dir);
     }
 }
@@ -395,12 +423,13 @@ impl Drop for Presentation {
     }
 }
 struct Show {
+    ink: Option<crate::ppt_dialog::InkGuard>,
+    guard: Option<crate::ppt_guard::Guard>,
     app: Dispatch,
     pres: Dispatch,
     window: Option<Dispatch>,
     hwnd: isize,
     pid: u32,
-    token: String,
 }
 impl Show {
     fn open(file: &Path, token: &str, stop: &AtomicBool) -> Result<Self> {
@@ -434,12 +463,13 @@ impl Show {
         let restored = app.set("AutomationSecurity", Value::integer(security));
         let pres = opened?;
         let mut owner = Self {
+            guard: None,
+            ink: None,
             app,
             pres,
             window: None,
             hwnd: 0,
             pid: 0,
-            token: token.into(),
         };
         restored?;
         ensure!(!stop.load(Ordering::SeqCst), "授权控制已停止");
@@ -447,6 +477,8 @@ impl Show {
             owner.pres.get("ReadOnly")?.number()? != 0,
             "PowerPoint 没有以只读方式打开"
         );
+        owner.guard = Some(crate::ppt_guard::Guard::attach(&owner.app, &owner.pres)?);
+        owner.pres.set("Saved", Value::integer(-1))?;
         let settings = owner.pres.get("SlideShowSettings")?.object()?;
         settings.set("ShowType", Value::integer(1))?;
         settings.set("ShowPresenterView", Value::integer(0))?;
@@ -486,19 +518,27 @@ impl Show {
             );
             SetForegroundWindow(hwnd);
         }
+        owner.ink = Some(crate::ppt_dialog::InkGuard::start(owner.hwnd, owner.pid)?);
         Ok(owner)
     }
 }
 impl Drop for Show {
     fn drop(&mut self) {
+        // Discard BEFORE requesting Exit: read-only does not prevent Save As.
+        let _ = self.pres.set("Saved", Value::integer(-1));
+        if let Some(guard) = &self.guard {
+            guard.allow_close();
+        }
         if let Some(window) = self.window.take() {
             if let Ok(view) = window.get("View").and_then(Value::object) {
+                let _ = view.method("EraseDrawing", vec![]);
                 let _ = view.method("Exit", vec![]);
             }
         }
-        close_window(self.hwnd, self.pid, &self.token);
         let _ = self.pres.set("Saved", Value::integer(-1));
         let _ = self.pres.method("Close", vec![]);
+        self.guard.take();
+        self.ink.take();
         // Quit only if no presentations remain. Never terminate POWERPNT.EXE or close unrelated files.
         if self
             .app
@@ -597,6 +637,11 @@ pub fn host(dir: &Path) -> Result<()> {
         let mut unresponsive: Option<Instant> = None;
         while !stop.load(Ordering::SeqCst) {
             Apartment::pump();
+            if show.guard.as_ref().is_some_and(|g| g.ended()) {
+                break;
+            }
+            // Annotation changes are intentionally ephemeral in licensed playback.
+            show.pres.set("Saved", Value::integer(-1))?;
             if unsafe { IsWindow(show.hwnd) } == 0 {
                 let alive = unsafe {
                     let handle = OpenProcess(PROCESS_SYNCHRONIZE, 0, show.pid);
@@ -669,6 +714,151 @@ pub fn host(dir: &Path) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn abandoned_cleanup_preserves_active_session() -> Result<()> {
+        fs::create_dir_all(root())?;
+        let active = root().join(uuid::Uuid::new_v4().to_string());
+        fs::create_dir(&active)?;
+        let lock = fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .share_mode(0)
+            .open(active.join("session.lock"))?;
+        fs::write(active.join("content-test.pptx"), b"sensitive test bytes")?;
+        cleanup_abandoned();
+        assert!(active.join("content-test.pptx").is_file());
+        drop(lock);
+        cleanup_abandoned();
+        assert!(!active.exists());
+        Ok(())
+    }
+    #[test]
+    #[ignore = "requires PowerPoint desktop with no other open presentations"]
+    fn real_powerpoint_annotated_exit_has_no_save_dialog() -> Result<()> {
+        use std::sync::atomic::AtomicUsize;
+        let _apartment = Apartment::new()?;
+        let dir = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("work/windows-2.5.2-20261104")
+            .join(format!("exit-test-{}", uuid::Uuid::new_v4()));
+        fs::create_dir_all(&dir)?;
+        let file = dir.join("guarded-exit.pptx");
+        {
+            let app = Dispatch::create("PowerPoint.Application", true)?;
+            let presentations = app.get("Presentations")?.object()?;
+            ensure!(
+                presentations.get("Count")?.number()? == 0,
+                "请先关闭其他演示文稿，测试不会操作它们"
+            );
+            let pres = presentations
+                .method("Add", vec![Value::integer(0)])?
+                .object()?;
+            pres.get("Slides")?
+                .object()?
+                .method("Add", vec![Value::integer(1), Value::integer(12)])?;
+            pres.method(
+                "SaveAs",
+                vec![Value::string(&file.to_string_lossy())?, Value::integer(24)],
+            )?;
+            pres.method("Close", vec![])?;
+            app.method("Quit", vec![])?;
+        }
+        for route in ["host", "escape", "close", "last-slide"] {
+            std::thread::sleep(Duration::from_secs(1));
+            let stop = AtomicBool::new(false);
+            let show = Show::open(&file, &uuid::Uuid::new_v4().simple().to_string(), &stop)?;
+            let view = show.window.as_ref().unwrap().get("View")?.object()?;
+            view.method(
+                "DrawLine",
+                vec![
+                    Value::integer(10),
+                    Value::integer(10),
+                    Value::integer(200),
+                    Value::integer(200),
+                ],
+            )?;
+            show.pres.set("Saved", Value::integer(0))?;
+            let finish = Arc::new(AtomicBool::new(false));
+            let dialogs = Arc::new(AtomicUsize::new(0));
+            // Test-only monitor cancels dialogs from this otherwise empty Office instance
+            // so a regression fails instead of leaving the test blocked in a modal call.
+            let watcher = {
+                let finish = finish.clone();
+                let dialogs = dialogs.clone();
+                let pid = show.pid;
+                std::thread::spawn(move || {
+                    struct Probe {
+                        pid: u32,
+                        count: usize,
+                    }
+                    unsafe extern "system" fn visit(h: isize, p: isize) -> i32 {
+                        let probe = &mut *(p as *mut Probe);
+                        let mut pid = 0;
+                        GetWindowThreadProcessId(h, &mut pid);
+                        if pid == probe.pid && IsWindowVisible(h) != 0 {
+                            let mut cls = [0u16; 64];
+                            let n = GetClassNameW(h, cls.as_mut_ptr(), 64);
+                            if String::from_utf16_lossy(&cls[..n.max(0) as usize]) == "#32770" {
+                                probe.count += 1;
+                                let no = GetDlgItem(h, IDNO);
+                                let cancel = GetDlgItem(h, IDCANCEL);
+                                if no != 0 {
+                                    PostMessageW(no, 0xf5, 0, 0);
+                                } else if cancel != 0 {
+                                    PostMessageW(cancel, 0xf5, 0, 0);
+                                }
+                            }
+                        }
+                        1
+                    }
+                    while !finish.load(Ordering::SeqCst) {
+                        let mut probe = Probe { pid, count: 0 };
+                        unsafe {
+                            EnumWindows(Some(visit), (&mut probe as *mut Probe) as isize);
+                        }
+                        dialogs.fetch_add(probe.count, Ordering::SeqCst);
+                        std::thread::sleep(Duration::from_millis(20));
+                    }
+                })
+            };
+            // Mirrors the running host's discard policy before user input arrives.
+            show.pres.set("Saved", Value::integer(-1))?;
+            match route {
+                "escape" => unsafe {
+                    PostMessageW(show.hwnd, WM_KEYDOWN, 27, 0);
+                    PostMessageW(show.hwnd, WM_KEYUP, 27, 0);
+                },
+                "close" => unsafe {
+                    PostMessageW(show.hwnd, WM_CLOSE, 0, 0);
+                },
+                "last-slide" => {
+                    view.method("Next", vec![])?;
+                    view.method("Next", vec![])?;
+                }
+                _ => {}
+            }
+            if route != "host" {
+                let start = Instant::now();
+                while !show.guard.as_ref().unwrap().ended()
+                    && start.elapsed() < Duration::from_secs(5)
+                {
+                    Apartment::pump();
+                    std::thread::sleep(Duration::from_millis(20));
+                }
+            }
+            let ink_discards = show.ink.as_ref().unwrap().dismissed.load(Ordering::SeqCst);
+            println!("INK_ROUTE {route} discarded={ink_discards}");
+            drop(view);
+            drop(show);
+            std::thread::sleep(Duration::from_millis(150));
+            finish.store(true, Ordering::SeqCst);
+            let _ = watcher.join();
+            let n = dialogs.load(Ordering::SeqCst);
+            println!("EXIT_ROUTE {route} save_dialog_samples={n}");
+            ensure!(n == 0, "退出路径 {route} 出现保存弹窗");
+        }
+        Ok(())
+    }
     #[test]
     fn native_ppt_original_bytes_require_lic_and_survive_encrypted_roundtrip() -> Result<()> {
         let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))

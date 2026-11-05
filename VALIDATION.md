@@ -1,3 +1,7 @@
+# Windows 2.5.2 current validation
+
+See [2.5.2 PowerPoint and cleanup](docs/Windows-2.5.2-validation.md) and [2.5.1 background packaging/UI](docs/Windows-2.5.1-validation.md). Historical checks below describe earlier builds, not an assertion that old preview-based scripts still match the current UI.
+
 # Windows 2.5.0 · Validation / 验证范围
 
 Updated: 2026-10-20 (Asia/Shanghai).

@@ -7,10 +7,8 @@ use crate::{
 use anyhow::{ensure, Context, Result};
 use std::{
     fs,
-    io::Read,
-    os::windows::process::CommandExt,
-    path::{Path, PathBuf},
-    process::{Command, Stdio},
+    path::PathBuf,
+    process::Command,
     ptr,
     sync::{Arc, Mutex},
     time::{Duration, Instant},
@@ -57,6 +55,8 @@ pub enum Role {
 pub struct App {
     pub role: Role,
     busy: bool,
+    worker: Option<std::sync::mpsc::Receiver<crate::packaging::Event>>,
+    progress: isize,
     hwnd: isize,
     status: isize,
     controls: Vec<isize>,
@@ -360,7 +360,7 @@ impl App {
         unsafe {
             let init = INITCOMMONCONTROLSEX {
                 dwSize: std::mem::size_of::<INITCOMMONCONTROLSEX>() as u32,
-                dwICC: ICC_BAR_CLASSES,
+                dwICC: ICC_BAR_CLASSES | ICC_PROGRESS_CLASS,
             };
             InitCommonControlsEx(&init);
         }
@@ -427,9 +427,7 @@ impl App {
             RegisterClassW(&wc);
             LoadLibraryW(wide("Msftedit.dll").as_ptr());
             let title = match &role {
-                Role::Administrator => {
-                    crate::i18n::text("离线文件授权管理员 · VLC视频重构版").to_string()
-                }
+                Role::Administrator => crate::i18n::text("Encrypt your digital assets").to_string(),
                 Role::Device => crate::i18n::text("设备请求工具 · VLC视频重构版").into(),
                 Role::Setup => crate::i18n::text("离线文件授权安装 · VLC视频重构版").into(),
                 Role::Viewer(i) => i.display_name.clone(),
@@ -458,6 +456,8 @@ impl App {
             let mut app = Box::new(Self {
                 role,
                 busy: false,
+                worker: None,
+                progress: 0,
                 hwnd: 0,
                 status: 0,
                 controls: vec![],
@@ -504,7 +504,16 @@ impl App {
                 0,
                 class.as_ptr(),
                 wide(&title).as_ptr(),
-                WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN,
+                if matches!(app.role, Role::Administrator) {
+                    WS_POPUP
+                        | WS_THICKFRAME
+                        | WS_MINIMIZEBOX
+                        | WS_MAXIMIZEBOX
+                        | WS_SYSMENU
+                        | WS_CLIPCHILDREN
+                } else {
+                    WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN
+                },
                 CW_USEDEFAULT,
                 CW_USEDEFAULT,
                 1180,
@@ -608,11 +617,28 @@ impl App {
         self.status = control(self.hwnd, "STATIC", "", 1, 20, 680, 1040, 50, 0, self.font);
         match &self.role {
             Role::Administrator => {
+                self.progress = control(
+                    self.hwnd,
+                    "msctls_progress32",
+                    "",
+                    301,
+                    20,
+                    740,
+                    1000,
+                    8,
+                    0,
+                    self.font,
+                );
+                unsafe {
+                    ShowWindow(self.progress, SW_HIDE);
+                }
+                self.add("—", 302, 1040, 0, 40);
+                self.add("×", 303, 1080, 0, 40);
                 self.add("中文 / English", LANGUAGE_TOGGLE, 960, 24, 160);
                 self.add(crate::i18n::text("创建发行者密钥"), CREATE, 44, 150, 210);
                 self.add(crate::i18n::text("恢复 / 解锁密钥"), LOAD, 266, 150, 210);
                 self.add(crate::i18n::text("加密密钥备份"), BACKUP, 44, 198, 210);
-                self.add(crate::i18n::text("导入并预览文件"), IMPORT, 266, 198, 210);
+                self.add(crate::i18n::text("导入内容包"), IMPORT, 266, 198, 210);
                 self.add(crate::i18n::text("生成内容 EXE"), BUILD, 44, 246, 210);
                 self.add(crate::i18n::text("选择已有内容包"), SELECT, 266, 246, 210);
                 control(
@@ -791,6 +817,32 @@ impl App {
         if !matches!(self.role, Role::Administrator) || self.window_unit == 0 {
             return;
         }
+        if self.worker.is_some() {
+            unsafe {
+                for id in [
+                    CREATE,
+                    LOAD,
+                    BACKUP,
+                    IMPORT,
+                    BUILD,
+                    SELECT,
+                    ISSUE,
+                    DEVICE,
+                    LANGUAGE_TOGGLE,
+                    20,
+                    22,
+                    23,
+                ] {
+                    EnableWindow(GetDlgItem(self.hwnd, id as i32), 0);
+                }
+            }
+            return;
+        }
+        unsafe {
+            for id in [CREATE, LOAD, DEVICE, LANGUAGE_TOGGLE, 20, 22, 23] {
+                EnableWindow(GetDlgItem(self.hwnd, id as i32), 1);
+            }
+        }
         let parsed = self.read_signing_form();
         match &parsed {
             Ok(value) => set_text(self.signing_summary, &value.summary()),
@@ -860,7 +912,7 @@ impl App {
             }
         }
         let title = match &self.role {
-            Role::Administrator => crate::i18n::text("离线文件授权管理员 · VLC视频重构版"),
+            Role::Administrator => crate::i18n::text("Encrypt your digital assets"),
             Role::Device => crate::i18n::text("设备请求工具 · VLC视频重构版"),
             Role::Setup => crate::i18n::text("离线文件授权安装 · VLC视频重构版"),
             Role::Viewer(info) => &info.display_name,
@@ -1089,7 +1141,11 @@ impl App {
     }
     // Keep the full workspace spacious; retain a compact toolbar while previewing.
     fn compact_workspace(&self) -> bool {
-        self.video.is_some() || self.pdf.is_some() || self.bitmap.is_some() || self.text != 0
+        !matches!(self.role, Role::Administrator)
+            && (self.video.is_some()
+                || self.pdf.is_some()
+                || self.bitmap.is_some()
+                || self.text != 0)
     }
     fn preview_top(&self) -> i32 {
         if self.video.is_none() && !self.view_controls.is_empty() {
@@ -1105,6 +1161,11 @@ impl App {
             }
             let mut r: RECT = std::mem::zeroed();
             GetClientRect(self.hwnd, &mut r);
+            if matches!(self.role, Role::Administrator) {
+                MoveWindow(GetDlgItem(self.hwnd, 302), r.right - 94, 2, 42, 24, 1);
+                MoveWindow(GetDlgItem(self.hwnd, 303), r.right - 48, 2, 42, 24, 1);
+                MoveWindow(self.progress, 20, r.bottom - 75, r.right - 40, 8, 1);
+            }
             let top = if matches!(self.role, Role::Administrator) {
                 self.preview_top()
             } else if self.fullscreen {
@@ -1383,81 +1444,49 @@ impl App {
         self.clear_buttons();
         self.add(crate::i18n::text("安装到本机"), INSTALL, 20, 20, 160);
         self.add(crate::i18n::text("导入新授权"), RENEW, 190, 20, 160);
-        self.add(
-            crate::i18n::text("修复自启动"),
-            STARTUP_REPAIR,
-            360,
-            20,
-            150,
-        );
+        if crate::watchdog::enabled_for(&info) {
+            self.add(
+                crate::i18n::text("修复自启动"),
+                STARTUP_REPAIR,
+                360,
+                20,
+                150,
+            );
+        } else {
+            crate::watchdog::disable_startup(&info)?;
+        }
         self.open_reader(Reader::new(package, key)?, self.auth.clone(), &info)?;
-        if info.version == 2 {
+        if info.version == 2 && crate::watchdog::enabled_for(&info) {
             self.startup_notice = crate::watchdog::enable_startup(&self.exe, &info)
                 .err()
                 .map(|e| format!("自动启动未设置：{e}。可点击“修复自启动”重试。"));
             self.watch = Some(crate::watchdog::Client::start(&self.exe, &info)?);
         }
         self.status(if info.kind == "presentation" {crate::i18n::text("内容已激活，正在启动 PowerPoint 全屏放映；仅放映、不提供编辑和保存，按 Esc 结束本次放映。")} else {crate::i18n::text("内容已激活，运行监测与登录自动启动已启用。视频自动全屏循环，授权到期停止。")});
+        if !crate::watchdog::enabled_for(&info) {
+            self.status("文档已激活；未启用开机自启动和看门狗。");
+        }
         if let Some(notice) = &self.startup_notice {
             self.status(notice);
         }
         Ok(())
     }
-    fn prepare(&self, path: &Path) -> Result<(PathBuf, Catalog)> {
-        let issuer = self
-            .issuer
-            .as_ref()
-            .context(crate::i18n::text("请先创建或解锁密钥"))?;
-        let extension = path
-            .extension()
-            .unwrap_or_default()
-            .to_string_lossy()
-            .to_lowercase();
-        let kind = match extension.as_str() {
-            "pdf" => "pdf",
-            "txt" => "text",
-            "ppt" | "pptx" | "pps" | "ppsx" => "presentation",
-            "png" | "jpg" | "jpeg" | "gif" | "bmp" | "tiff" | "tif" => "image",
-            "mp4" | "mp3" | "wav" | "m4a" | "avi" | "mkv" | "mov" | "flac" | "webm" | "ogg" => {
-                "media"
-            }
-            _ => anyhow::bail!(crate::i18n::text("暂不支持内置查看此格式")),
-        };
-        if kind == "presentation" {
-            crate::presentation::validate(path)?;
-        }
-        let len = fs::metadata(path)?.len();
-        ensure!(len > 0, crate::i18n::text("文件为空"));
-        let pubkey = issuer.spki()?;
-        let info = PackageInfo {
-            custom_activation_window: true,
-            version: 2,
-            content_id: uuid::Uuid::new_v4(),
-            issuer_fingerprint: fingerprint(&pubkey),
-            issuer_public_key: b64(&pubkey),
-            display_name: path.file_name().unwrap().to_string_lossy().into(),
-            kind: kind.into(),
-            plain_length: len,
-            chunk_size: CHUNK,
-            nonce_prefix: b64(&random::<8>()),
-            hardware_policy: crate::hardware::STABLE.into(),
-            enrollment_public_key: issuer.enrollment_public()?,
-        };
-        let key = random::<32>();
-        let temp = platform::root()
-            .join("rust-admin-temp")
-            .join(format!("{}.pkg", uuid::Uuid::new_v4()));
-        fs::create_dir_all(temp.parent().unwrap())?;
-        write_package(path, &temp, &info, &key)?;
-        Ok((
-            temp,
-            Catalog {
-                info,
-                key_base64: b64(&key),
-            },
-        ))
-    }
     fn command(&mut self, id: usize) -> Result<()> {
+        if id == 302 {
+            unsafe {
+                ShowWindow(self.hwnd, SW_MINIMIZE);
+            }
+            return Ok(());
+        }
+        if id == 303 {
+            unsafe {
+                PostMessageW(self.hwnd, WM_CLOSE, 0, 0);
+            }
+            return Ok(());
+        }
+        if self.worker.is_some() {
+            return Ok(());
+        }
         match id {
             LANGUAGE_TOGGLE => self.change_language(
                 if crate::i18n::current() == crate::i18n::Language::English {
@@ -1572,21 +1601,17 @@ impl App {
                     self.issuer.is_some(),
                     crate::i18n::text("请先创建或解锁密钥")
                 );
-                if let Some(mut path)=file_dialog(self.hwnd,false,crate::i18n::text("导入并预览文件"),crate::i18n::text("支持的文件\0*.pdf;*.txt;*.png;*.jpg;*.mp4;*.mp3;*.wav;*.docx;*.pptx;*.doc;*.ppt;*.pps;*.ppsx\0所有文件\0*.*"),""){
-                    let ext=path.extension().unwrap_or_default().to_string_lossy().to_lowercase();
-                    if ["docx","doc"].contains(&ext.as_str()){path=self.convert_office(&path)?;}
-                    self.stop();let (temp,catalog)=self.prepare(&path)?;
-                    let package=Package::header(fs::File::open(&temp)?,0,fs::metadata(&temp)?.len())?;let info=catalog.info.clone();
-                    self.open_reader(Reader::new(package,unb64(&catalog.key_base64)?)?,None,&info)?;
-                    self.temp.push(temp);self.input=Some(path);self.catalog=None;
-                    self.status(if info.kind=="presentation" {if crate::presentation::available(){crate::i18n::text("PPT 原文件已载入，正在启动 PowerPoint 放映预览；生成 EXE 后需 LIC 授权。")}else{crate::i18n::text("PPT 原文件已载入，可直接加密生成 EXE；本机没有 PowerPoint，无法预览。接收端需安装 PowerPoint。")}}else{crate::i18n::text("预览已打开，请检查内容后生成 EXE。Word 仍转换为静态页面。")});
+                if let Some(path)=file_dialog(self.hwnd,false,"导入内容包","支持的文件\0*.pdf;*.txt;*.png;*.jpg;*.mp4;*.mp3;*.wav;*.docx;*.pptx;*.doc;*.ppt;*.pps;*.ppsx;*.mkv;*.avi;*.mov\0所有文件\0*.*","") {
+                    ensure!(path.is_file(), "请选择有效文件");
+                    self.stop(); self.input=Some(path); self.catalog=None;
+                    self.status("内容已导入，点击生成内容 EXE 开始加密。");
                 }
             }
             BUILD => {
                 let input = self
                     .input
                     .as_ref()
-                    .context(crate::i18n::text("请先导入并预览文件"))?
+                    .context(crate::i18n::text("请先导入内容包"))?
                     .clone();
                 if let Some(path) = file_dialog(
                     self.hwnd,
@@ -1599,17 +1624,37 @@ impl App {
                         path != input && path != self.exe,
                         crate::i18n::text("不能覆盖原文件或管理员程序")
                     );
-                    self.status(crate::i18n::text("正在加密并构建 EXE…"));
-                    let (temp, catalog) = self.prepare(&input)?;
-                    let result = build_exe(&self.exe, &temp, &path);
-                    let _ = fs::remove_file(&temp);
-                    result?;
-                    self.issuer.as_ref().unwrap().catalog_save(
-                        &PathBuf::from(format!("{}.olmeta", path.display())),
-                        &catalog,
-                    )?;
-                    self.catalog = Some(catalog);
-                    self.status(if crate::presentation::supported(&input.extension().unwrap_or_default().to_string_lossy().to_lowercase()) {crate::i18n::text("PPT 原文件已加密生成 EXE。只发送 EXE；.olmeta 留在管理员端。接收端需安装 PowerPoint，LIC 验证后仅放映。")} else {crate::i18n::text("EXE 已生成。只发送 EXE；.olmeta 请保留备份。视频授权后全屏单个循环。")});
+                    let issuer = self.issuer.as_ref().context("请先解锁密钥")?;
+                    let issuer = Issuer {
+                        raw: issuer.raw.clone(),
+                        signing: issuer.signing.clone(),
+                    };
+                    let mut office = crate::packaging::office_program();
+                    if crate::packaging::word(&input) && office.is_none() {
+                        office = file_dialog(
+                            self.hwnd,
+                            false,
+                            "选择 LibreOffice soffice.exe",
+                            "LibreOffice\0soffice.exe",
+                            "",
+                        );
+                        ensure!(office.is_some(), "转换 Word 需要 LibreOffice");
+                    }
+                    let exe = self.exe.clone();
+                    let (tx, rx) = std::sync::mpsc::channel();
+                    self.worker = Some(rx);
+                    unsafe {
+                        SendMessageW(self.progress, PBM_SETPOS, 0, 0);
+                        ShowWindow(self.progress, SW_SHOW);
+                    }
+                    self.status("正在准备加密，请稍候…");
+                    std::thread::spawn(move || {
+                        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                            crate::packaging::build(&issuer, &input, &exe, &path, office, &tx)
+                        }))
+                        .unwrap_or_else(|_| Err(anyhow::anyhow!("加密任务异常终止")));
+                        let _ = tx.send(crate::packaging::Event::Finished(result));
+                    });
                 }
             }
             SELECT => {
@@ -1629,7 +1674,7 @@ impl App {
                         info.version == 2,
                         crate::i18n::text("请选择新需求版生成的内容包；旧内容请重新打包")
                     );
-                    let mut meta = PathBuf::from(format!("{}.olmeta", path.display()));
+                    let mut meta = crate::packaging::locate_metadata(&path, &info.display_name);
                     if !meta.exists() {
                         meta = match file_dialog(
                             self.hwnd,
@@ -1667,40 +1712,23 @@ impl App {
                     crate::i18n::text("加密设备信息\0*.json;*.josn\0旧版设备请求\0*.request"),
                     "",
                 ) {
-                    let (request, display) = if c.info.version == 2 {
+                    let request = if c.info.version == 2 {
                         let enrollment = crate::hardware::decrypt(
                             self.issuer.as_ref().unwrap(),
                             &c.info,
                             &crate::hardware::read_enrollment(&path)?,
                         )?;
-                        (enrollment.device, enrollment.hardware.display()?)
+                        enrollment.device
                     } else {
-                        (read_json::<DeviceRequest>(&path)?, String::new())
+                        read_json::<DeviceRequest>(&path)?
                     };
                     validate_request(&request)?;
-                    if !display.is_empty() {
-                        self.stop();
-                        self.text = control(
-                            self.hwnd,
-                            "RICHEDIT50W",
-                            &display,
-                            0,
-                            10,
-                            110,
-                            1000,
-                            500,
-                            ES_MULTILINE as u32 | ES_READONLY as u32 | WS_VSCROLL | WS_BORDER,
-                            self.font,
-                        );
-                        self.layout();
-                        self.status(crate::i18n::text("完整设备信息已解密。绑定排除 USB 移动盘和网卡连接状态，其他硬件变化需要重新授权。"));
-                    }
                     if let Some(output) = file_dialog(
                         self.hwnd,
                         true,
                         crate::i18n::text("保存授权文件"),
                         crate::i18n::text("授权文件\0*.lic"),
-                        crate::i18n::text("设备授权.lic"),
+                        &crate::packaging::stem_name(&c.info.display_name, "lic"),
                     ) {
                         let accepted = unsafe {
                             MessageBoxW(self.hwnd,wide(&crate::tr_format!("设备：{}\n{}\n点击确认后开始首次导入倒计时。新授权不叠加旧期限。", "Device: {}\n{}\nConfirming starts the first-import window. A new license replaces the previous term.",request.device_id,options.summary())).as_ptr(),wide(crate::i18n::text("立即签发")).as_ptr(),MB_OKCANCEL)
@@ -1745,9 +1773,7 @@ impl App {
                     }
                     _ => anyhow::bail!(crate::i18n::text("请在内容程序中获取设备识别码")),
                 };
-                self.status(crate::i18n::text(
-                    "正在采集并加密完整硬件信息，不采集 IP 地址、网关或 DNS…",
-                ));
+                self.status(crate::i18n::text("正在采集机器系统指纹"));
                 ensure!(
                     info.version == 2,
                     crate::i18n::text("旧内容需要在新需求版管理员中重新打包")
@@ -1764,7 +1790,7 @@ impl App {
                     true,
                     crate::i18n::text("保存加密设备识别码"),
                     crate::i18n::text("加密设备信息\0*.json;*.josn"),
-                    crate::i18n::text("设备识别码.json"),
+                    &crate::packaging::stem_name(&info.display_name, "josn"),
                 ) {
                     atomic(&path, &output)?;
                     self.status(crate::i18n::text("加密设备信息已导出，请发给管理员，随后通过“导入固态链密钥文件”导入收到的 .lic。"));
@@ -1810,36 +1836,6 @@ impl App {
                             .resume(device)?
                             .context(crate::i18n::text("授权已失效"))?;
                         self.open_viewer(key)?;
-                    }
-                } else if matches!(self.role, Role::Administrator) {
-                    if !crate::presentation::available() {
-                        message(crate::i18n::text(
-                            "本机未安装 PowerPoint，不能预览 PPT，但可以直接生成加密 EXE。",
-                        ));
-                        return Ok(());
-                    }
-                    if let Some(input) = self.input.clone() {
-                        if crate::presentation::supported(
-                            &input
-                                .extension()
-                                .unwrap_or_default()
-                                .to_string_lossy()
-                                .to_lowercase(),
-                        ) {
-                            let (temp, catalog) = self.prepare(&input)?;
-                            let package = Package::header(
-                                fs::File::open(&temp)?,
-                                0,
-                                fs::metadata(&temp)?.len(),
-                            )?;
-                            self.open_reader(
-                                Reader::new(package, unb64(&catalog.key_base64)?)?,
-                                None,
-                                &catalog.info,
-                            )?;
-                            self.temp.push(temp);
-                            self.status(crate::i18n::text("正在启动 PowerPoint 放映预览。"));
-                        }
                     }
                 }
             }
@@ -1893,6 +1889,42 @@ impl App {
         Ok(())
     }
     fn tick(&mut self) -> Result<()> {
+        let events: Vec<_> = self
+            .worker
+            .as_ref()
+            .map(|r| r.try_iter().collect())
+            .unwrap_or_default();
+        for event in events {
+            match event {
+                crate::packaging::Event::Progress(n, label) => {
+                    unsafe {
+                        SendMessageW(self.progress, PBM_SETPOS, n as usize, 0);
+                    }
+                    self.status(&format!("{label} {n}%"));
+                }
+                crate::packaging::Event::Finished(result) => {
+                    self.worker = None;
+                    unsafe {
+                        ShowWindow(self.progress, SW_HIDE);
+                    }
+                    match result {
+                        Ok(c) => {
+                            self.catalog = Some(c);
+                            self.status(
+                                "EXE 和同名 .olmeta 已生成。请保留管理员记录，向接收方发送 EXE。",
+                            );
+                        }
+                        Err(e) => {
+                            self.status(&format!("生成失败：{e:#}"));
+                        }
+                    }
+                    self.layout();
+                    unsafe {
+                        InvalidateRect(self.hwnd, ptr::null(), 0);
+                    }
+                }
+            }
+        }
         self.refresh_signing_form();
         self.update_dock();
         if let Some(video) = &self.video {
@@ -2296,104 +2328,6 @@ impl App {
             EndPaint(self.hwnd, &ps);
         }
     }
-    fn convert_office(&mut self, input: &Path) -> Result<PathBuf> {
-        let ext = input.extension().unwrap().to_string_lossy().to_lowercase();
-        ensure!(
-            fs::metadata(input)?.len() > 0,
-            crate::i18n::text("Office 文件为空")
-        );
-        if ext == "docx" || ext == "pptx" {
-            let mut zip = zip::ZipArchive::new(fs::File::open(input)?)
-                .context(crate::i18n::text("Office 文档不是有效 ZIP"))?;
-            let expected = if ext == "docx" {
-                "word/document.xml"
-            } else {
-                "ppt/presentation.xml"
-            };
-            ensure!(
-                zip.by_name("[Content_Types].xml").is_ok() && zip.by_name(expected).is_ok(),
-                crate::i18n::text("Office 文档结构无效")
-            );
-        } else {
-            let mut magic = [0; 8];
-            fs::File::open(input)?.read_exact(&mut magic)?;
-            ensure!(
-                magic == [208, 207, 17, 224, 161, 177, 26, 225],
-                crate::i18n::text("DOC/PPT 文件头无效")
-            );
-        }
-        let mut soffice = PathBuf::from(std::env::var_os("ProgramFiles").unwrap_or_default())
-            .join("LibreOffice/program/soffice.exe");
-        if !soffice.exists() {
-            let installed =
-                PathBuf::from(std::env::var_os("ProgramFiles(x86)").unwrap_or_default())
-                    .join("LibreOffice/program/soffice.exe");
-            if installed.exists() {
-                soffice = installed;
-            }
-        }
-        if !soffice.exists() {
-            soffice = match file_dialog(
-                self.hwnd,
-                false,
-                crate::i18n::text("选择已安装 LibreOffice 的 soffice.exe"),
-                "LibreOffice\0soffice.exe",
-                "",
-            ) {
-                Some(p) => p,
-                None => anyhow::bail!(crate::i18n::text("转换需要管理员电脑安装 LibreOffice")),
-            };
-        }
-        let com = soffice.with_extension("com");
-        if com.exists() {
-            soffice = com;
-        }
-        let dir = platform::root()
-            .join("rust-office")
-            .join(uuid::Uuid::new_v4().to_string());
-        fs::create_dir_all(&dir)?;
-        self.temp.push(dir.clone());
-        let profile = dir.join("profile").to_string_lossy().replace('\\', "/");
-        let uri = format!(
-            "file:///{}",
-            profile
-                .bytes()
-                .map(|c| if c.is_ascii_alphanumeric() || b"/:_-".contains(&c) {
-                    (c as char).to_string()
-                } else {
-                    format!("%{c:02X}")
-                })
-                .collect::<String>()
-        );
-        self.status(crate::i18n::text("正在通过 LibreOffice 转换为静态 PDF…"));
-        let mut child = Command::new(soffice)
-            .arg(format!("-env:UserInstallation={uri}"))
-            .args(["--headless", "--convert-to", "pdf", "--outdir"])
-            .arg(&dir)
-            .arg(input)
-            .creation_flags(0x08000000)
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .spawn()?;
-        let start = Instant::now();
-        loop {
-            if let Some(status) = child.try_wait()? {
-                ensure!(
-                    status.success(),
-                    crate::i18n::text("Office 转换程序退出失败")
-                );
-                break;
-            }
-            if start.elapsed() > Duration::from_secs(180) {
-                let _ = child.kill();
-                anyhow::bail!(crate::i18n::text("Office 转换超时"));
-            }
-            std::thread::sleep(Duration::from_millis(50));
-        }
-        let pdf = dir.join(input.file_stem().unwrap()).with_extension("pdf");
-        ensure!(pdf.exists(), crate::i18n::text("Office 转换没有生成 PDF"));
-        Ok(pdf)
-    }
 }
 unsafe fn paint_button(l: isize) -> isize {
     let item = &*(l as *const DRAWITEMSTRUCT);
@@ -2509,6 +2443,7 @@ unsafe fn dispatch(h: isize, m: u32, w: usize, l: isize) -> isize {
                         }
                         app.command(id)?;
                         app.refresh_signing_form();
+                        app.layout();
                         Ok(Some(0))
                     }
                     WM_HSCROLL => {
@@ -2540,9 +2475,13 @@ unsafe fn dispatch(h: isize, m: u32, w: usize, l: isize) -> isize {
                         Ok(Some(1))
                     }
                     WM_KEYDOWN if app.media_key(w)? => Ok(Some(0)),
-                    WM_KEYDOWN if w == 27 => {
+                    WM_KEYDOWN if w == 27 && app.worker.is_none() => {
                         app.stop();
                         DestroyWindow(h);
+                        Ok(Some(0))
+                    }
+                    WM_CLOSE if app.worker.is_some() => {
+                        app.status("加密任务正在进行，请完成后关闭窗口。");
                         Ok(Some(0))
                     }
                     WM_CLOSE => {
@@ -2585,6 +2524,36 @@ unsafe extern "system" fn wndproc(h: isize, m: u32, w: usize, l: isize) -> isize
     if m == WM_NCCREATE {
         let c = &*(l as *const CREATESTRUCTW);
         SetWindowLongPtrW(h, GWLP_USERDATA, c.lpCreateParams as isize);
+    }
+    if m == WM_NCCALCSIZE && w != 0 && GetWindowLongPtrW(h, GWL_STYLE) as u32 & WS_CAPTION == 0 {
+        return 0;
+    }
+    if m == WM_NCHITTEST {
+        let style = GetWindowLongPtrW(h, GWL_STYLE) as u32;
+        if style & WS_CAPTION == 0 && style & WS_THICKFRAME != 0 {
+            let mut point = POINT {
+                x: (l as i16) as i32,
+                y: ((l >> 16) as i16) as i32,
+            };
+            ScreenToClient(h, &mut point);
+            let mut r: RECT = std::mem::zeroed();
+            GetClientRect(h, &mut r);
+            if point.y < 5 {
+                return HTTOP as isize;
+            }
+            if point.x < 5 {
+                return HTLEFT as isize;
+            }
+            if point.x > r.right - 5 {
+                return HTRIGHT as isize;
+            }
+            if point.y > r.bottom - 5 {
+                return HTBOTTOM as isize;
+            }
+            if point.y < 45 && point.x < r.right - 100 {
+                return HTCAPTION as isize;
+            }
+        }
     }
     if m == WM_DESTROY {
         PostQuitMessage(0);

@@ -6,7 +6,7 @@ Offline encryption and device-bound licensing for video, audio, presentations, i
 
 | Edition | Download | Source and usage |
 | --- | --- | --- |
-| Windows x64 · 2.5.0 | [Portable Windows package](https://github.com/shuizhaodemumu/Encrypt-your-digital-assets/releases/tag/v2.5.0) | Root source; Windows details below |
+| Windows x64 · 2.5.2 | [Portable Windows package](https://github.com/shuizhaodemumu/Encrypt-your-digital-assets/releases/tag/v2.5.2) | Root source; Windows details below |
 | Ubuntu x86_64 · 0.1.3 | [DEB and self-contained RUN](https://github.com/shuizhaodemumu/Encrypt-your-digital-assets/releases/tag/ubuntu-v0.1.3) | [Ubuntu README](ubuntu/README.md) · [Validation](ubuntu/VALIDATION.md) |
 | Android ARM64 · 0.1.0 preview | [Android APK + dedicated Windows administrator](https://github.com/shuizhaodemumu/Encrypt-your-digital-assets/releases/tag/android-v0.1.0-preview) | [Android source and usage](android/README.md) · [Validation](android/VALIDATION.md) |
 
@@ -16,17 +16,29 @@ Ubuntu bundles VLC, GTK, Poppler and LibreOffice and **does not create boot/logi
 
 ## Shared visual identity · October 2026
 
-Windows 2.5.0 adopts the Ubuntu workspace's pale-lavender full-window background, translucent rounded cards, generous spacing and header language switch. Selected content/package labels keep the workflow visible; previews use a compact toolbar so the content remains accessible.
+Windows 2.5.2 keeps the lavender artwork and two-column workspace throughout import, encryption and issuance. The white system caption is removed; dragging, resizing, minimize and close remain available. Import does not preview files or display decrypted hardware reports.
 
 Both editions use the same **white-haired dragon girl holding a purple padlock**. Windows embeds multiple icon sizes in the executable (including newly packaged content), its window and installer; Ubuntu ships matching menu/theme icons in both DEB and RUN packages. Updating the administrator does not rewrite previously distributed content programs.
 
 ![Shared application icon](assets/app-icon.png)
 
-## Windows 2.5.0
+## Windows 2.5.2
 
 Package a video, presentation, image or document as an encrypted Windows EXE, then issue an offline license for the recipient's device. The recipient exports an encrypted device request; the administrator returns a signed `.lic` file. No online activation service is required.
 
-![The 2.5.0 licensing workspace](docs/screenshots/workspace-zh.png)
+![The 2.5.2 licensing workspace](docs/screenshots/windows-2.5.1-initial.png)
+
+## What changed in 2.5.2
+
+- Cancel ordinary Save/Save As for the protected PowerPoint presentation; discard changes and ink on exit without blocking other presentations' saves.
+- Use exclusive session locks to preserve active temporary files and reclaim abandoned application sessions on startup.
+- Disable document startup/watchdog recovery while retaining media policy.
+- Keep the administrator layout stable; import without preview; run conversion, encryption and EXE writing on a background worker with progress.
+- Default to source-stem `.olmeta`, `.josn` and `.lic` names; accept legacy `.exe.olmeta` catalogs.
+
+**Repackage existing content EXEs to receive the new viewer.** This is controlled local playback, not DRM against an OS administrator, memory extraction or every Office export API. Never distribute issuer private keys.
+
+[Changelog](CHANGELOG.md) · [Validation and limits](docs/Windows-2.5.2-validation.md)
 
 ## What it does
 
@@ -38,22 +50,22 @@ Package a video, presentation, image or document as an encrypted Windows EXE, th
 | PDF / text / images | PDFium renders PDF through memory callbacks; text and supported images are displayed in the built-in viewer. Image inputs include PNG/JPEG/GIF/BMP/TIFF; full animated-image playback is not claimed. |
 | Word | The administrator uses a separately installed LibreOffice to convert DOC/DOCX to PDF before packaging. Recipients view the converted pages; this is not an editable Word document. |
 | Licensing | Device-bound signed LIC, configurable first-import window, activation-based usage duration, encrypted issuer-key backups and DPAPI-protected local state. |
-| Login startup | After activation, a verified installed copy is registered under the current user's Windows `Run` key. This runs **after login**, not as a pre-login service. A repair action and CLI removal command are available. |
-| Fault recovery | A heartbeat supervisor restarts faulty/unresponsive playback. The production policy can restart Windows after the third fault restart within ten minutes. Normal pause, close, license expiry and successful video loops are not faults. |
-| Interface | Chinese/English menus and dialogs, live input validation, action prerequisites, confirmation before issuance and saved valid settings. 2.5.0 removes the illustration card frame and blends its edges into the pale full-window background. |
+| Login startup | Disabled for PowerPoint, PDF, converted Word and text; retained for media and images. For those applicable types, after activation, a verified installed copy is registered under the current user's Windows `Run` key. This runs **after login**, not as a pre-login service. A repair action and CLI removal command are available. |
+| Fault recovery | Disabled for documents. For media and images, a heartbeat supervisor restarts faulty/unresponsive playback. The production policy can restart Windows after the third fault restart within ten minutes. Normal pause, close, license expiry and successful video loops are not faults. |
+| Interface | Chinese/English menus and dialogs, live input validation, action prerequisites, confirmation before issuance and saved valid settings. A caption-free, stable two-column workspace and background packaging progress replace import previews and raw hardware reports. |
 
 Container support does not guarantee every codec, resolution or GPU driver. PowerPoint and LibreOffice are external prerequisites; neither is bundled.
 
 ## Use the application
 
-Download the current portable package from [Windows 2.5.0](https://github.com/shuizhaodemumu/Encrypt-your-digital-assets/releases/tag/v2.5.0). Extract it to a writable directory and run `Packager.exe`. `DeviceTool.cmd` opens enrollment; `Install.cmd` installs it for the current user and creates shortcuts. Building from source produces `Packager.exe`, `DeviceTool.exe` and `Packager-Setup.exe` in `程序/`. Binary names and the internal Cargo package remain stable for compatibility; the project display name is **Encrypt your digital assets**.
+Download the current portable package from [Windows 2.5.2](https://github.com/shuizhaodemumu/Encrypt-your-digital-assets/releases/tag/v2.5.2). Extract it to a writable directory and run `Packager.exe`. `DeviceTool.cmd` opens enrollment; `Install.cmd` installs it for the current user and creates shortcuts. Building from source produces `Packager.exe`, `DeviceTool.exe` and `Packager-Setup.exe` in `程序/`. Binary names and the internal Cargo package remain stable for compatibility; the project display name is **Encrypt your digital assets**.
 
 1. Create or unlock the issuer key. Keep the `.issuerkey`, password and administrator-only `.olmeta` content catalog private.
-2. Import and preview the original content, then build its encrypted EXE. Send that EXE to the recipient.
-3. On first launch, the recipient selects **Get this device's identification code** and returns the encrypted JSON request (`.json`, with legacy `.josn` naming supported by the workflow).
+2. Import the original content without previewing it, then build its encrypted EXE in the background with progress. Send only that EXE to the recipient.
+3. On first launch, the recipient selects **Get this device's identification code** and returns the encrypted JSON request (default source-stem `.josn`; encrypted JSON format, with `.json` still accepted).
 4. Select the matching content package in the administrator UI. Set **license days** and the **first-import window**, then import the request.
 5. Review the confirmation and issue the LIC. Send it to the recipient, who imports it before its first-import deadline.
-6. The content opens after verification. The license term starts at the recipient's successful first activation. Startup registration and the supervisor are enabled for activated content.
+6. The content opens after verification. The license term starts at the recipient's successful first activation. Startup and supervision are disabled for documents and retained for media/images.
 
 ### Two independent time settings
 
@@ -93,7 +105,7 @@ Recipient verifies signature / package / device / time -> opens content
 - **Device request:** ephemeral P-256 ECDH, HKDF-SHA-256 and AES-256-GCM protect the hardware report for the issuer.
 - **Issuer backup:** PKCS#8 password encryption using PBKDF2-HMAC-SHA-256 (600,000 iterations) and AES-256-CBC. Local device keys and activation state use Windows DPAPI.
 - **Hardware:** Windows PowerShell/CIM collects computer, board, product UUID, disk, CPU, BIOS, memory and physical-network-adapter fields. Stable binding excludes USB removable storage and changing connection status; the full collected hardware report remains encrypted. IP addresses, DNS and public-IP geolocation are excluded. Changes to bound hardware can require reissuance; stability is not tolerance of every hardware replacement.
-- **Rendering:** native Win32 controls with offscreen painting and cached frames during nested modal repaint. The right-hand illustration uses premultiplied alpha and `AlphaBlend`; it is hidden when a content preview occupies the workspace.
+- **Rendering:** native Win32 controls with offscreen painting and cached frames during nested modal repaint. The right-hand illustration uses premultiplied alpha and `AlphaBlend`; the administrator retains the same layout after all operations.
 - **Runtime:** LibVLC DLLs/plugins and PDFium are embedded in `assets/runtime.zip` and extracted locally. PowerPoint uses a separate host/COM route; Word conversion calls LibreOffice only on the administrator side.
 
 ### Protection limits
@@ -121,16 +133,14 @@ The PowerShell helper supports the existing local GNU SDK layout through `OFFLIN
 Desktop scripts need an interactive Windows desktop and a **test build**, plus the synthetic fixtures described in [VALIDATION.md](VALIDATION.md):
 
 ```powershell
-cargo build --locked --features watchdog-test-mode
-.\build\ui-test.ps1 -SkipBuild
-.\build\paint-ui-test.ps1 -Version 2.5.0
-# Optional media end-to-end regression with a short work/sample.mp4 fixture:
-.\build\video-e2e.ps1 -Formats mp4
+cargo test --locked --features watchdog-test-mode
+# Requires desktop PowerPoint and no unrelated open presentations:
+cargo test --locked --features watchdog-test-mode real_powerpoint_ -- --ignored --nocapture --test-threads=1
 ```
 
 `watchdog-test-mode` disables real machine reboot for tests. Do not enable it in production releases. Do not use real reboot/logoff as an automated acceptance check. Hardware-report/LIC tests create local synthetic issuer data; do not publish their work directories.
 
-23 normal tests passed and one desktop-dependent native test remains ignored in the default suite. Actual GUI checks cover bilingual dialogs, content preview, custom-window issuance/import, modal repaint, window icon/layout checks and 60 resize/language cycles. MP4 looping/startup recovery and earlier five-container checks have narrower recorded scopes; see [validation history](VALIDATION.md). There is no blanket claim of reboot/login, all codecs, mixed-DPI monitors or every Office version being tested.
+2.5.2: 26 normal tests passed; three desktop/fixture tests are ignored by default. Separate real PowerPoint save-isolation and four annotated-exit tests passed, as did the packaged EXE / enrollment / source-stem LIC / playback / blocked Save As / plaintext cleanup flow. The 2.5.1 400 MB background-packaging test verified matching decrypted SHA-256. See [current validation and limits](docs/Windows-2.5.2-validation.md).
 
 ## Source map
 
@@ -140,7 +150,7 @@ cargo build --locked --features watchdog-test-mode
 | `src/hardware.rs`, `assets/hardware.ps1` | Hardware policy and encrypted enrollment |
 | `src/issuance.rs`, `src/session.rs` | Editable import window, activation and runtime authorization |
 | `src/native.rs` | LibVLC/PDFium FFI and encrypted read/seek callbacks |
-| `src/presentation.rs`, `src/automation.rs` | PowerPoint host, COM automation and presentation lifecycle |
+| `src/presentation.rs`, `src/automation.rs`, `src/ppt_guard.rs`, `src/ppt_dialog.rs` | PowerPoint host, COM automation and presentation lifecycle |
 | `src/platform.rs`, `src/install.rs`, `src/watchdog.rs` | DPAPI, installation/startup and heartbeat recovery |
 | `src/gui.rs`, `src/i18n.rs` | Win32 UI, bilingual state and layered painting |
 | `build.rs`, `assets/app-icon.*`, `assets/app.rc` | Embedded Windows icons and native-control theme manifest |

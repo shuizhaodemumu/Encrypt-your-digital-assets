@@ -7,7 +7,10 @@ mod i18n;
 mod install;
 mod issuance;
 mod native;
+mod packaging;
 mod platform;
+mod ppt_dialog;
+mod ppt_guard;
 mod presentation;
 mod session;
 mod watchdog;
@@ -16,7 +19,7 @@ use core::*;
 use std::{
     fs,
     io::{Read, Seek},
-    path::{Path, PathBuf},
+    path::Path,
 };
 fn main() {
     i18n::init();
@@ -57,9 +60,12 @@ fn upgrade(source: &Path, output: &Path) -> Result<()> {
         Package::open_exe(output)?.encrypted_hash()? == expected_hash,
         crate::i18n::text("迁移后的密文不一致")
     );
-    let meta = PathBuf::from(format!("{}.olmeta", source.display()));
+    let meta = packaging::locate_metadata(source, &p.info.display_name);
     if meta.exists() {
-        fs::copy(meta, format!("{}.olmeta", output.display()))?;
+        let destination = packaging::metadata_path(output, &p.info.display_name);
+        if meta != destination {
+            fs::copy(meta, destination)?;
+        }
     }
     Ok(())
 }
@@ -68,6 +74,15 @@ fn run() -> Result<()> {
     let exe = std::env::current_exe()?;
     let info = Package::open_exe(&exe).ok().map(|p| p.info);
     platform::initialize_installed_root(&exe, info.as_ref())?;
+    presentation::cleanup_abandoned();
+    if let Some(info) = info.as_ref() {
+        if !watchdog::enabled_for(info) {
+            watchdog::disable_startup(info)?;
+            if args.iter().any(|a| a == "--autostart") {
+                return Ok(());
+            }
+        }
+    }
     if args.len() > 1 {
         let expected = match args[1].as_str() {
             "--pack" => Some(5),
@@ -188,7 +203,7 @@ fn run() -> Result<()> {
                 write_package(source, &temp, &info, &key)?;
                 build_exe(&exe, &temp, out)?;
                 issuer.catalog_save(
-                    &PathBuf::from(format!("{}.olmeta", out.display())),
+                    &packaging::metadata_path(out, &info.display_name),
                     &Catalog {
                         info,
                         key_base64: b64(&key),
@@ -222,7 +237,10 @@ fn run() -> Result<()> {
             "--decrypt-check" => {
                 let p = Package::open_exe(Path::new(&args[2]))?;
                 let issuer = Issuer::load(Path::new(&args[3]), &password()?)?;
-                let c = issuer.catalog_load(Path::new(&format!("{}.olmeta", args[2])))?;
+                let c = issuer.catalog_load(&packaging::locate_metadata(
+                    Path::new(&args[2]),
+                    &p.info.display_name,
+                ))?;
                 ensure!(c.info == p.info, crate::i18n::text("内容记录不一致"));
                 let mut reader = Reader::new(p, unb64(&c.key_base64)?)?;
                 let mut digest = sha2::Sha256::new();

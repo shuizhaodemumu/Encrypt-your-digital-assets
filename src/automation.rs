@@ -137,6 +137,15 @@ impl Drop for Value {
 }
 pub struct Dispatch(*mut c_void, PhantomData<Rc<()>>);
 impl Dispatch {
+    pub(crate) fn raw(&self) -> *mut c_void {
+        self.0
+    }
+    pub(crate) unsafe fn retained(raw: *mut c_void) -> Self {
+        let table = &**(raw as *const *const Vtable);
+        let add: unsafe extern "system" fn(*mut c_void) -> u32 = std::mem::transmute(table.add_ref);
+        add(raw);
+        Self(raw, PhantomData)
+    }
     pub fn create(prog_id: &str, local: bool) -> Result<Self> {
         unsafe {
             let mut clsid = IID_NULL;

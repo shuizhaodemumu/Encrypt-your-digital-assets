@@ -616,6 +616,15 @@ impl Reader {
     }
 }
 pub fn write_package(input: &Path, out: &Path, info: &PackageInfo, key: &[u8]) -> Result<()> {
+    write_package_progress(input, out, info, key, |_, _| {})
+}
+pub fn write_package_progress(
+    input: &Path,
+    out: &Path,
+    info: &PackageInfo,
+    key: &[u8],
+    mut progress: impl FnMut(u64, u64),
+) -> Result<()> {
     let mut f = File::open(input)?;
     let mut o = File::create(out)?;
     let raw = encode(info)?;
@@ -646,6 +655,7 @@ pub fn write_package(input: &Path, out: &Path, info: &PackageInfo, key: &[u8]) -
             .map_err(|_| anyhow::anyhow!(crate::i18n::text("内容加密失败")))?;
         o.write_all(&b)?;
         done += n as u64;
+        progress(done, info.plain_length);
         index += 1;
     }
     let mut extra = [0];
@@ -657,13 +667,33 @@ pub fn write_package(input: &Path, out: &Path, info: &PackageInfo, key: &[u8]) -
     Ok(())
 }
 pub fn build_exe(template: &Path, package: &Path, out: &Path) -> Result<()> {
+    build_exe_progress(template, package, out, |_, _| {})
+}
+pub fn build_exe_progress(
+    template: &Path,
+    package: &Path,
+    out: &Path,
+    mut progress: impl FnMut(u64, u64),
+) -> Result<()> {
     ensure!(template != out, crate::i18n::text("不能覆盖管理程序"));
     let temp = out.with_extension(format!("{}.tmp", Uuid::new_v4()));
     let result = (|| {
         let mut o = File::options().write(true).create_new(true).open(&temp)?;
         std::io::copy(&mut File::open(template)?, &mut o)?;
         let offset = o.stream_position()?;
-        let len = std::io::copy(&mut File::open(package)?, &mut o)?;
+        let mut source = File::open(package)?;
+        let total = source.metadata()?.len();
+        let mut len = 0;
+        let mut buffer = vec![0; 1024 * 1024];
+        loop {
+            let n = source.read(&mut buffer)?;
+            if n == 0 {
+                break;
+            }
+            o.write_all(&buffer[..n])?;
+            len += n as u64;
+            progress(len, total);
+        }
         o.write_all(b"OLEXE001")?;
         o.write_all(&offset.to_le_bytes())?;
         o.write_all(&len.to_le_bytes())?;

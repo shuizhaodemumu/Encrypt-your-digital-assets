@@ -19,6 +19,10 @@ pub enum Health {
     Stopped,
     Fault,
 }
+/// Documents retain authorization checks but never register startup or spawn recovery.
+pub fn enabled_for(info: &PackageInfo) -> bool {
+    !matches!(info.kind.as_str(), "presentation" | "pdf" | "text")
+}
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Heartbeat {
     pub pid: u32,
@@ -46,6 +50,7 @@ pub struct Client {
 }
 impl Client {
     pub fn start(exe: &Path, info: &PackageInfo) -> Result<Self> {
+        ensure!(enabled_for(info), "文档内容不启用看门狗");
         let args: Vec<_> = std::env::args().collect();
         let supplied = args
             .iter()
@@ -325,6 +330,9 @@ pub(crate) fn alive(pid: u32, exe: &Path) -> bool {
     }
 }
 pub fn supervise(exe: &Path, info: &PackageInfo, mut pid: u32, token: &str) -> Result<()> {
+    if !enabled_for(info) {
+        return Ok(());
+    }
     let file = path(info, token)?;
     let history_path = platform::root()
         .join("watchdog")
@@ -434,6 +442,7 @@ fn startup_name(info: &PackageInfo) -> String {
     )
 }
 pub fn enable_startup(exe: &Path, info: &PackageInfo) -> Result<PathBuf> {
+    ensure!(enabled_for(info), "文档内容不启用开机自启动");
     let target = crate::install::install_content_for_startup(exe, info)?;
     let command = format!("\"{}\" --autostart", target.display());
     ensure!(

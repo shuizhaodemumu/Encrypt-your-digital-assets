@@ -6,7 +6,7 @@
 
 | 版本 | 下载 | 源码与使用说明 |
 | --- | --- | --- |
-| Windows x64 · 2.5.0 | [Windows 便携包](https://github.com/shuizhaodemumu/Encrypt-your-digital-assets/releases/tag/v2.5.0) | 仓库根目录；下文为 Windows 说明 |
+| Windows x64 · 2.5.2 | [Windows 便携包](https://github.com/shuizhaodemumu/Encrypt-your-digital-assets/releases/tag/v2.5.2) | 仓库根目录；下文为 Windows 说明 |
 | Ubuntu x86_64 · 0.1.3 | [DEB 安装包 / 自带运行库 RUN](https://github.com/shuizhaodemumu/Encrypt-your-digital-assets/releases/tag/ubuntu-v0.1.3) | [Ubuntu 使用与构建](ubuntu/README.zh-CN.md) · [验证范围](ubuntu/VALIDATION.md) |
 | 安卓 ARM64 · 0.1.0 预览版 | [安卓 APK + 独立 Windows 授权工具](https://github.com/shuizhaodemumu/Encrypt-your-digital-assets/releases/tag/android-v0.1.0-preview) | [安卓使用与构建](android/README.md) · [验证范围](android/VALIDATION.md) |
 
@@ -16,17 +16,29 @@ Ubuntu 自带 VLC、GTK、Poppler 和 LibreOffice，**不创建开机或登录�
 
 ## 两个平台统一视觉
 
-Windows 2.5.0 采用 Ubuntu 工作台的淡紫色全窗口背景、半透明圆角卡片、宽松排版和页眉语言切换按钮；所选内容/内容包有独立提示，打开预览后使用紧凑工具区。
+Windows 2.5.2 延续淡紫色背景、半透明卡片与龙娘形象，去除白色系统标题栏，保留窗口拖动、缩放、最小化与关闭。导入、加密和签发后保持相同双栏布局，不打开预览或显示硬件明文报告。
 
 两个版本统一使用**抱着紫色锁的白发小龙娘**图标。Windows 把多尺寸 ICO 写入 EXE、窗口与安装入口，新打包的内容 EXE 也会继承；Ubuntu 的 DEB/RUN 同时包含菜单图标、窗口图标和八种尺寸。更新管理员程序不会自动修改已分发的旧内容程序。
 
 ![统一应用图标](assets/app-icon.png)
 
-## Windows 2.5.0
+## 2.5.2 更新重点
+
+- PPT 保存/另存为按受保护文稿拦截；退出丢弃修改与墨迹批注，不影响另开的普通文稿。
+- 临时文件使用独占会话锁；正常结束清理，异常退出残留在下次启动时回收，活跃会话保留。
+- 文档取消自启动和重启看门狗；视频策略保留。
+- 管理员不再预览导入文件、不显示解密硬件报告；大文件后台处理并显示进度。
+- `逐梦.pptx` / `逐梦.MP4` 默认生成 `逐梦.olmeta`、`逐梦.josn`、`逐梦.lic`；兼容旧 `.exe.olmeta`。
+
+**必须重新打包旧内容 EXE，才能应用新的查看器行为。** 这是本地受控放映加固，不是抵御本机管理员、内存提取或所有 Office 导出 API 的 DRM。无需将发行者私钥交给接收者。
+
+[更新日志](CHANGELOG.md) · [2.5.2 验证与边界](docs/Windows-2.5.2-validation.md)
+
+## Windows 2.5.2
 
 把视频、PPT、图片和文档打包成加密 Windows EXE，再为接收者签发离线、设备绑定的授权。接收者导出加密设备报告，管理员返回 `.lic` 文件，导入验证后才能打开内容，不需要在线激活服务器。
 
-![2.5.0 授权工作台：淡背景和无白框龙娘插画](docs/screenshots/workspace-zh.png)
+![2.5.2 授权工作台：淡背景和无白框龙娘插画](docs/screenshots/windows-2.5.1-initial.png)
 
 ## 能做什么
 
@@ -38,9 +50,9 @@ Windows 2.5.0 采用 Ubuntu 工作台的淡紫色全窗口背景、半透明圆�
 | PDF、文本、图片 | PDFium通过内存回调渲染PDF；TXT和PNG/JPEG/GIF/BMP/TIFF等图片由内置查看器显示，不承诺所有动图播放效果。 |
 | Word | 管理员端调用单独安装的LibreOffice，把DOC/DOCX转成PDF后加密；接收者看到转换后的页面，不是可编辑Word文件。 |
 | 离线授权 | 加密硬件报告、稳定设备指纹、签名LIC、自定义首次导入窗口、从首次激活起计算使用天数、密钥口令加密备份。 |
-| 登录自启动 | 授权后校验并保存安装副本，写入当前用户Windows Run启动项；在用户登录后启动，不是无人登录时运行的系统服务。提供修复及取消入口。 |
-| 故障恢复 | 后台心跳监测播放故障或失去响应并重启程序；正式版沿用“10分钟内第三次故障重启后，直接重启电脑”的策略。暂停、正常退出、授权到期和正常视频循环不算故障。 |
-| 图形界面 | 中英双语、前置条件禁用、输入实时校验、签发确认、有效设置记忆；2.5.0保留全窗口淡背景，右侧插画取消白框并柔和羽化。 |
+| 登录自启动 | 仅视频/音频与图片保留；PPT、PDF、Word 转换内容及 TXT 禁用。适用内容授权后校验并保存安装副本，写入当前用户Windows Run启动项；在用户登录后启动，不是无人登录时运行的系统服务。提供修复及取消入口。 |
+| 故障恢复 | 文档禁用看门狗；视频/音频与图片保留后台心跳监测播放故障或失去响应并重启程序；正式版沿用“10分钟内第三次故障重启后，直接重启电脑”的策略。暂停、正常退出、授权到期和正常视频循环不算故障。 |
+| 图形界面 | 中英双语、前置条件禁用、输入实时校验、签发确认、有效设置记忆；无白色标题栏；固定双栏布局；后台转换、加密和写入 EXE 显示进度。 |
 
 文件扩展名支持不代表所有编码、分辨率和显卡驱动都兼容。PowerPoint和LibreOffice均需自行安装，不随程序分发。
 
@@ -49,11 +61,11 @@ Windows 2.5.0 采用 Ubuntu 工作台的淡紫色全窗口背景、半透明圆�
 从[Releases](https://github.com/shuizhaodemumu/Encrypt-your-digital-assets/releases)下载当前便携包，解压到可写目录后运行`Packager.exe`。源码构建脚本会在`程序/`生成管理员`Packager.exe`、设备工具`DeviceTool.exe`和安装器`Packager-Setup.exe`。为兼容现有脚本和包，二进制及内部Cargo名称保持稳定；项目展示名为 **Encrypt your digital assets**。
 
 1. 管理员创建或解锁发行者密钥。`.issuerkey`、口令和管理员内容目录`.olmeta`不要交给接收者。
-2. 导入原文件预览，生成加密内容EXE，将EXE发送给接收者。
-3. 接收者首次打开EXE，点击“获取本机设备识别码”，导出加密JSON设备报告并交给管理员（工作流兼容旧`.josn`命名）。
+2. 点击“导入内容包”选择源文件（不预览），生成加密内容 EXE。大文件在后台处理并显示进度；只把 EXE 发给接收者。
+3. 接收者首次打开EXE，点击“获取本机设备识别码”，导出加密JSON设备报告并交给管理员（默认同名 `.josn`，内容是加密 JSON；仍接受 `.json`）。
 4. 管理员选择对应内容包，设置授权天数与首次导入窗口，导入该设备报告。
 5. 核对确认摘要后签发LIC，发给接收者，在窗口期内导入。
-6. 验证成功后打开内容，从首次激活成功时开始计算使用期限，同时启用登录自启动和运行监测。
+6. 验证成功后打开内容，从首次激活成功时开始计算使用期限，文档不启用自启动或看门狗，视频/音频与图片保留原策略。
 
 ### 两个时间设置，分别计算
 
@@ -90,7 +102,7 @@ Windows 2.5.0 采用 Ubuntu 工作台的淡紫色全窗口背景、半透明圆�
 - **设备报告**：临时P-256 ECDH协商，HKDF-SHA-256派生密钥，AES-256-GCM加密完整采集信息，仅对应发行者可解密。
 - **密钥与本机状态**：发行者私钥采用PKCS#8口令加密，PBKDF2-HMAC-SHA-256迭代600,000次和AES-256-CBC；设备私钥和激活状态由Windows DPAPI保护。
 - **硬件采集**：PowerShell/CIM查询电脑、主板、产品UUID、磁盘、CPU、BIOS、内存和物理网卡信息。稳定指纹排除USB移动磁盘和变化的连接状态，完整硬件信息仍加密保存在报告里；不采集IP、DNS、公网IP归属地。更换参与绑定的硬件可能需要重新签发，不承诺任意换件都能保持授权。
-- **显示与重绘**：Rust调用原生Win32控件；离屏绘制和模态期间缓存帧避免重入黑屏。右侧插画通过预乘透明度和AlphaBlend融入背景，内容预览占用工作区时隐藏插画。
+- **显示与重绘**：Rust调用原生Win32控件；离屏绘制和模态期间缓存帧避免重入黑屏。右侧插画通过预乘透明度和AlphaBlend融入背景，管理员操作完成后仍保持同一工作台布局。
 - **运行库**：LibVLC DLL/插件和PDFium随`assets/runtime.zip`嵌入并在本地释放；PowerPoint使用独立宿主/COM路径；Word转换仅在管理员端调用LibreOffice。
 
 ### 保护边界
@@ -120,16 +132,14 @@ PowerShell脚本支持`OFFLINE_RUST_SDK`指定现有GNU SDK目录，也会回退
 图形测试需要交互式Windows桌面、**测试构建**和相应短视频夹具，细节见[VALIDATION.md](VALIDATION.md)。
 
 ```powershell
-cargo build --locked --features watchdog-test-mode
-.\build\ui-test.ps1 -SkipBuild
-.\build\paint-ui-test.ps1 -Version 2.5.0
-# 可选：准备work/sample.mp4后运行媒体端到端回归
-.\build\video-e2e.ps1 -Formats mp4
+cargo test --locked --features watchdog-test-mode
+# Requires desktop PowerPoint and no unrelated open presentations:
+cargo test --locked --features watchdog-test-mode real_powerpoint_ -- --ignored --nocapture --test-threads=1
 ```
 
 `watchdog-test-mode`仅供自动测试禁用真实电脑重启，正式构建不要启用。不要把真实重启/注销用于自动验收；合成发行者、设备报告和LIC测试产物不得提交到仓库。
 
-常规单元测试23项通过，另1项需桌面的原生用例在默认运行中忽略。实际GUI已检查双语弹窗、预览、自定义窗口签发与导入、模态重绘、无白框像素及60次窗口大小/语言切换。MP4循环、自启动注册与恢复及此前五格式测试各有范围，不等同所有编码、混合DPI、多台电脑、真实重启登录和所有Office版本都通过。
+2.5.2 常规测试 26 项通过，3 项桌面/素材测试默认忽略；另行执行真实 PowerPoint 保存隔离与四条带批注退出路径测试通过。打包 EXE → 加密设备请求 → 同名 LIC 签发 → 放映 → 拦截另存为 → 退出清理的端到端流程通过。2.5.1 的 400 MB PPTX 后台加密与解密 SHA-256 校验通过。参见[验证记录](docs/Windows-2.5.2-validation.md)，不等同所有 Office、语言、硬件和编码均通过。
 
 ## 源码结构
 
@@ -139,7 +149,7 @@ cargo build --locked --features watchdog-test-mode
 | `src/hardware.rs`、`assets/hardware.ps1` | 硬件策略与加密设备报告 |
 | `src/issuance.rs`、`src/session.rs` | 窗口配置、激活、运行时授权 |
 | `src/native.rs` | LibVLC/PDFium FFI及加密读取/寻址回调 |
-| `src/presentation.rs`、`src/automation.rs` | PowerPoint宿主、COM与放映生命周期 |
+| `src/presentation.rs`、`src/automation.rs`、`src/ppt_guard.rs`、`src/ppt_dialog.rs` | PowerPoint宿主、COM与放映生命周期 |
 | `src/platform.rs`、`src/install.rs`、`src/watchdog.rs` | DPAPI、安装自启动与心跳恢复 |
 | `src/gui.rs`、`src/i18n.rs` | Win32界面、双语状态与分层绘制 |
 | `build/` | 构建、GUI和媒体回归脚本 |
