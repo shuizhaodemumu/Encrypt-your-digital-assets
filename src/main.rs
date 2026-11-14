@@ -1,6 +1,8 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+mod application_bundle;
 mod automation;
 mod core;
+mod executable;
 mod gui;
 mod hardware;
 mod i18n;
@@ -75,6 +77,7 @@ fn run() -> Result<()> {
     let info = Package::open_exe(&exe).ok().map(|p| p.info);
     platform::initialize_installed_root(&exe, info.as_ref())?;
     presentation::cleanup_abandoned();
+    executable::cleanup_abandoned();
     if let Some(info) = info.as_ref() {
         if !watchdog::enabled_for(info) {
             watchdog::disable_startup(info)?;
@@ -163,6 +166,14 @@ fn run() -> Result<()> {
                 let source = Path::new(&args[2]);
                 let issuer = Issuer::load(Path::new(&args[3]), &password()?)?;
                 let out = Path::new(&args[4]);
+                if source
+                    .extension()
+                    .is_some_and(|e| e.eq_ignore_ascii_case("exe"))
+                {
+                    let (tx, _rx) = std::sync::mpsc::channel();
+                    packaging::build(&issuer, source, &exe, out, None, &tx)?;
+                    return Ok(());
+                }
                 let kind = match source
                     .extension()
                     .and_then(|extension| extension.to_str())
@@ -174,6 +185,7 @@ fn run() -> Result<()> {
                 {
                     "mp4" | "mkv" | "avi" | "mov" | "webm" | "mp3" | "wav" | "m4a" | "flac"
                     | "ogg" => "media",
+                    "exe" => "executable",
                     "pdf" => "pdf",
                     "txt" => "text",
                     "png" | "jpg" => "image",
@@ -183,6 +195,10 @@ fn run() -> Result<()> {
                 if kind == "presentation" {
                     presentation::validate(source)?;
                 }
+                if kind == "executable" {
+                    executable::validate(source)?;
+                }
+                ensure!(source != out && out != exe, "不能覆盖源文件或管理员程序");
                 let pubkey = issuer.spki()?;
                 let info = PackageInfo {
                     custom_activation_window: true,

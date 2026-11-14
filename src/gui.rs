@@ -72,6 +72,7 @@ pub struct App {
     signing_options: crate::issuance::Options,
     video: Option<Video>,
     presentation: Option<crate::presentation::Presentation>,
+    program: Option<crate::executable::Program>,
     watch: Option<crate::watchdog::Client>,
     pdf: Option<Pdf>,
     bitmap: Option<Bitmap>,
@@ -473,6 +474,7 @@ impl App {
                 signing_options: crate::issuance::Options::load(),
                 video: None,
                 presentation: None,
+                program: None,
                 watch: None,
                 pdf: None,
                 bitmap: None,
@@ -948,6 +950,7 @@ impl App {
         self.volbar = 0;
         self.video.take();
         self.presentation.take();
+        self.program.take();
         self.pdf.take();
         self.bitmap.take();
         if self.surface != 0 {
@@ -1324,6 +1327,15 @@ impl App {
     ) -> Result<()> {
         self.stop();
         match info.kind.as_str() {
+            "executable" | "application" => {
+                self.program = Some(crate::executable::Program::open(
+                    reader,
+                    auth,
+                    info,
+                    self.exe.parent().unwrap().to_path_buf(),
+                )?);
+                self.view_button("启动程序", PLAY, 650);
+            }
             "presentation" => {
                 if matches!(self.role, Role::Viewer(_)) || crate::presentation::available() {
                     self.presentation =
@@ -1466,6 +1478,9 @@ impl App {
         if !crate::watchdog::enabled_for(&info) {
             self.status("文档已激活；未启用开机自启动和看门狗。");
         }
+        if matches!(info.kind.as_str(), "executable" | "application") {
+            self.status("正在解密并启动程序；无看门狗、全屏或自启动。关闭授权窗口会结束程序。");
+        }
         if let Some(notice) = &self.startup_notice {
             self.status(notice);
         }
@@ -1601,8 +1616,13 @@ impl App {
                     self.issuer.is_some(),
                     crate::i18n::text("请先创建或解锁密钥")
                 );
-                if let Some(path)=file_dialog(self.hwnd,false,"导入内容包","支持的文件\0*.pdf;*.txt;*.png;*.jpg;*.mp4;*.mp3;*.wav;*.docx;*.pptx;*.doc;*.ppt;*.pps;*.ppsx;*.mkv;*.avi;*.mov\0所有文件\0*.*","") {
+                if let Some(path)=file_dialog(self.hwnd,false,"导入内容包","支持的文件\0*.pdf;*.txt;*.png;*.jpg;*.mp4;*.mp3;*.wav;*.docx;*.pptx;*.doc;*.ppt;*.pps;*.ppsx;*.mkv;*.avi;*.mov;*.exe\0所有文件\0*.*","") {
                     ensure!(path.is_file(), "请选择有效文件");
+                    if path.extension().is_some_and(|e|e.eq_ignore_ascii_case("exe")) {
+                        crate::executable::validate(&path)?;
+                        let accepted=unsafe{MessageBoxW(self.hwnd,wide(&format!("将加密此 EXE 所在的整个程序文件夹（含 DLL、配置、资源及子目录）：\n{}\n\n请确认这是独立程序文件夹，没有无关文件。输出必须保存在此文件夹之外。\n运行期间相对路径写入的配置属于临时副本，退出后清理；请把需要保留的结果保存到其他位置。",path.parent().unwrap().display())).as_ptr(),wide("确认程序打包范围").as_ptr(),MB_OKCANCEL|MB_ICONINFORMATION)};
+                        if accepted!=IDOK{return Ok(());}
+                    }
                     self.stop(); self.input=Some(path); self.catalog=None;
                     self.status("内容已导入，点击生成内容 EXE 开始加密。");
                 }
@@ -1618,7 +1638,14 @@ impl App {
                     true,
                     crate::i18n::text("生成内容 EXE"),
                     crate::i18n::text("内容程序\0*.exe"),
-                    &format!("{}.exe", input.file_stem().unwrap().to_string_lossy()),
+                    &if input
+                        .extension()
+                        .is_some_and(|e| e.eq_ignore_ascii_case("exe"))
+                    {
+                        format!("{}-授权.exe", input.file_stem().unwrap().to_string_lossy())
+                    } else {
+                        format!("{}.exe", input.file_stem().unwrap().to_string_lossy())
+                    },
                 ) {
                     ensure!(
                         path != input && path != self.exe,
@@ -1822,7 +1849,13 @@ impl App {
                 if let Some(v) = &self.video {
                     v.play()?;
                 } else if let Role::Viewer(info) = &self.role {
-                    if info.kind == "presentation" {
+                    if matches!(
+                        info.kind.as_str(),
+                        "presentation" | "executable" | "application"
+                    ) {
+                        if self.program.is_some() {
+                            return Ok(());
+                        }
                         let device = self
                             .device
                             .as_ref()
@@ -1969,6 +2002,23 @@ impl App {
                 }
                 if now() - s.last_saved >= 5 {
                     s.save()?;
+                }
+            }
+        }
+        if let Some(program) = self.program.as_mut() {
+            match program.poll() {
+                Ok(crate::executable::State::Starting) => {}
+                Ok(crate::executable::State::Running) => {
+                    self.status("程序运行中；关闭此授权窗口或授权到期会结束程序，不会自动重启。")
+                }
+                Ok(crate::executable::State::Ended) => {
+                    self.program.take();
+                    self.status("程序已退出，不会自动重启；可点击“启动程序”再次打开。");
+                }
+                Err(e) => {
+                    self.program.take();
+                    self.status(&format!("程序启动失败：{e:#}"));
+                    message(&format!("{e:#}"));
                 }
             }
         }
@@ -2204,7 +2254,7 @@ impl App {
                     draw_file_label(dc, self.font, 50, 374, half - 44, &source);
                     draw_file_label(dc, self.font, 76 + half, 222, half - 44, &package);
                     draw_label(dc, self.font, 50, 542, half - 44, 54,
-                        crate::tr!("视频全屏循环  ·  离线 LIC 验证\nPPT 原文件放映  ·  支持图片 / 文档 / 音频",
+                        crate::tr!("视频全屏循环  ·  离线 LIC 验证\nPPT 原文件放映  ·  支持图片 / 文档 / 音频 / EXE",
                             "Full-screen video loops · Offline LIC activation\nOriginal PPT slideshows · Images / documents / audio"), 0x00826974);
                 }
             }
@@ -2238,7 +2288,11 @@ impl App {
                         245
                     },
                 };
-                let label = wide(crate::i18n::text("离线授权 · 你的专属播放空间"));
+                let label = wide(if matches!(self.role, Role::Administrator) {
+                    ""
+                } else {
+                    crate::i18n::text("离线授权 · 你的专属播放空间")
+                });
                 DrawTextW(dc, label.as_ptr(), -1, &mut title, DT_LEFT | DT_WORDBREAK);
                 let mut subtitle = RECT {
                     left: 40,
@@ -2255,8 +2309,10 @@ impl App {
                     },
                 };
                 let label = wide(if matches!(self.role, Role::Administrator) {
-                    crate::tr!("原文件加密 · 设备绑定授权\n首次导入窗口与激活后的使用期限分别计算。",
-                        "Encrypted originals · Device-bound licenses\nImport deadline and activated usage period are independent.")
+                    "在线模式需先创建或选择组；发行者私钥不上传 NAS。\n切换离线模式不会解除已有内容的在线监管。"
+                } else if matches!(&self.role,Role::Viewer(i) if matches!(i.kind.as_str(),"executable"|"application"))
+                {
+                    "Windows 程序授权运行 / EXE 与 DLL 加密\n导入 LIC 后启动程序；不强制全屏、不设置自启动、不自动重启。\n请保留此授权窗口；关闭窗口或授权到期会结束程序。\n需要保留的文件请保存到程序临时目录之外。"
                 } else {
                     crate::i18n::text("VLC 播放内核  /  原文件加密\n视频默认全屏循环，移动鼠标到屏幕底部显示控制栏。\n空格 暂停/播放 · ←/→ 跳转10秒 · F11 全屏 · Esc 返回窗口")
                 });

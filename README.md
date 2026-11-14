@@ -2,11 +2,11 @@
 
 [中文说明](README.zh-CN.md) · Rust · Windows · Ubuntu · Android
 
-Offline encryption and device-bound licensing for video, audio, presentations, images and documents. Choose the edition for the recipient's operating system:
+Offline encryption and device-bound licensing for Windows application folders, video, audio, presentations, images and documents. Choose the edition for the recipient's operating system:
 
 | Edition | Download | Source and usage |
 | --- | --- | --- |
-| Windows x64 · 2.5.2 | [Portable Windows package](https://github.com/shuizhaodemumu/Encrypt-your-digital-assets/releases/tag/v2.5.2) | Root source; Windows details below |
+| Windows x64 · 2.6.0 | [Portable Windows package](https://github.com/shuizhaodemumu/Encrypt-your-digital-assets/releases/tag/v2.6.0) | Root source; Windows details below |
 | Ubuntu x86_64 · 0.1.3 | [DEB and self-contained RUN](https://github.com/shuizhaodemumu/Encrypt-your-digital-assets/releases/tag/ubuntu-v0.1.3) | [Ubuntu README](ubuntu/README.md) · [Validation](ubuntu/VALIDATION.md) |
 | Android ARM64 · 0.1.0 preview | [Android APK + dedicated Windows administrator](https://github.com/shuizhaodemumu/Encrypt-your-digital-assets/releases/tag/android-v0.1.0-preview) | [Android source and usage](android/README.md) · [Validation](android/VALIDATION.md) |
 
@@ -16,19 +16,34 @@ Ubuntu bundles VLC, GTK, Poppler and LibreOffice and **does not create boot/logi
 
 ## Shared visual identity · October 2026
 
-Windows 2.5.2 keeps the lavender artwork and two-column workspace throughout import, encryption and issuance. The white system caption is removed; dragging, resizing, minimize and close remain available. Import does not preview files or display decrypted hardware reports.
+Windows 2.6.0 keeps the lavender artwork and two-column workspace throughout import, encryption and issuance. The white system caption is removed; dragging, resizing, minimize and close remain available. Import does not preview files or display decrypted hardware reports.
 
 Both editions use the same **white-haired dragon girl holding a purple padlock**. Windows embeds multiple icon sizes in the executable (including newly packaged content), its window and installer; Ubuntu ships matching menu/theme icons in both DEB and RUN packages. Updating the administrator does not rewrite previously distributed content programs.
 
 ![Shared application icon](assets/app-icon.png)
 
-## Windows 2.5.2
+## Windows 2.6.0
 
 Package a video, presentation, image or document as an encrypted Windows EXE, then issue an offline license for the recipient's device. The recipient exports an encrypted device request; the administrator returns a signed `.lic` file. No online activation service is required.
 
 ![The 2.5.2 licensing workspace](docs/screenshots/windows-2.5.1-initial.png)
 
-## What changed in 2.5.2
+## New in Windows 2.6.0: licensed application folders
+
+Select the main Windows EXE to package its containing folder, including DLLs, configuration, resources, subdirectories and empty directories. The recipient runs it after importing a device-bound LIC. Save the generated wrapper outside the source folder.
+
+- Prepare a dedicated, working application folder and review the packaging scope before proceeding.
+- EXE content does not enable watchdog recovery, forced full-screen or login autostart.
+- After authorization, files are restored into an isolated temporary session and the main EXE runs with its directory as the working directory.
+- Closing the authorization window or losing authorization ends the owned process tree. Normal exit cleans temporary files without restarting the program.
+- Data written inside the restored application directory is temporary. Save important results outside that directory.
+- Required .NET/VC++ runtimes, services, drivers and COM registration are not automatically installed. Applications requiring elevation need an elevated wrapper.
+
+This is the offline 2.6.0 release; it does not include the 2.7 online-management preview. Existing media and document features remain. Runtime plaintext extraction by an OS administrator is outside this protection boundary.
+
+[Application packaging guide](docs/Windows-2.6.0-executable-licensing.md) · [2.6.0 validation](docs/Windows-2.6.0-validation.md)
+
+## Improvements retained from 2.5.2
 
 - Cancel ordinary Save/Save As for the protected PowerPoint presentation; discard changes and ink on exit without blocking other presentations' saves.
 - Use exclusive session locks to preserve active temporary files and reclaim abandoned application sessions on startup.
@@ -58,7 +73,7 @@ Container support does not guarantee every codec, resolution or GPU driver. Powe
 
 ## Use the application
 
-Download the current portable package from [Windows 2.5.2](https://github.com/shuizhaodemumu/Encrypt-your-digital-assets/releases/tag/v2.5.2). Extract it to a writable directory and run `Packager.exe`. `DeviceTool.cmd` opens enrollment; `Install.cmd` installs it for the current user and creates shortcuts. Building from source produces `Packager.exe`, `DeviceTool.exe` and `Packager-Setup.exe` in `程序/`. Binary names and the internal Cargo package remain stable for compatibility; the project display name is **Encrypt your digital assets**.
+Download the current portable package from [Windows 2.5.2](https://github.com/shuizhaodemumu/Encrypt-your-digital-assets/releases/tag/v2.6.0). Extract it to a writable directory and run `Packager.exe`. `DeviceTool.cmd` opens enrollment; `Install.cmd` installs it for the current user and creates shortcuts. Building from source produces `Packager.exe`, `DeviceTool.exe` and `Packager-Setup.exe` in `程序/`. Binary names and the internal Cargo package remain stable for compatibility; the project display name is **Encrypt your digital assets**.
 
 1. Create or unlock the issuer key. Keep the `.issuerkey`, password and administrator-only `.olmeta` content catalog private.
 2. Import the original content without previewing it, then build its encrypted EXE in the background with progress. Send only that EXE to the recipient.
@@ -146,6 +161,7 @@ cargo test --locked --features watchdog-test-mode real_powerpoint_ -- --ignored 
 
 | File | Responsibility |
 | --- | --- |
+| `src/application_bundle.rs`, `src/executable.rs` | Folder archive validation, authorized EXE launch, Job Object lifetime and temporary-session cleanup |
 | `src/core.rs` | Package format, chunk crypto, key storage and signed licenses |
 | `src/hardware.rs`, `assets/hardware.ps1` | Hardware policy and encrypted enrollment |
 | `src/issuance.rs`, `src/session.rs` | Editable import window, activation and runtime authorization |

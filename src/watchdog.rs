@@ -21,7 +21,10 @@ pub enum Health {
 }
 /// Documents retain authorization checks but never register startup or spawn recovery.
 pub fn enabled_for(info: &PackageInfo) -> bool {
-    !matches!(info.kind.as_str(), "presentation" | "pdf" | "text")
+    !matches!(
+        info.kind.as_str(),
+        "presentation" | "pdf" | "text" | "executable" | "application"
+    )
 }
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Heartbeat {

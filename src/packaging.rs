@@ -86,12 +86,15 @@ pub fn build(
         } else {
             input
         };
+        let mut source = source;
+        let bundled = dir.join("application.zip");
         let extension = source
             .extension()
             .and_then(|s| s.to_str())
             .unwrap_or("")
             .to_ascii_lowercase();
         let kind = match extension.as_str() {
+            "exe" => "application",
             "pdf" => "pdf",
             "txt" => "text",
             "ppt" | "pptx" | "pps" | "ppsx" => "presentation",
@@ -104,6 +107,17 @@ pub fn build(
         if kind == "presentation" {
             crate::presentation::validate(source)?;
         }
+        if kind == "application" {
+            report(1, "正在收集 EXE、DLL 和程序资源…");
+            crate::application_bundle::pack(input, output, &bundled, |done, total| {
+                report(1 + (done * 29 / total) as u32, "正在打包程序目录…")
+            })?;
+            source = &bundled;
+        }
+        ensure!(
+            input != output && exe != output,
+            "不能覆盖源文件或管理员程序"
+        );
         let size = fs::metadata(source)?.len();
         ensure!(size > 0, "文件为空");
         let public = issuer.spki()?;
@@ -128,7 +142,14 @@ pub fn build(
         let key = zeroize::Zeroizing::new(random::<32>());
         let package = dir.join("content.pkg");
         write_package_progress(source, &package, &info, &*key, |done, total| {
-            report(5 + (done * 70 / total) as u32, "正在加密内容…")
+            report(
+                if kind == "application" {
+                    30 + (done * 45 / total) as u32
+                } else {
+                    5 + (done * 70 / total) as u32
+                },
+                "正在加密内容…",
+            )
         })?;
         report(75, "正在写入 EXE…");
         build_exe_progress(exe, &package, output, |done, total| {
@@ -249,7 +270,7 @@ mod tests {
         );
         let mut reader = Reader::new(Package::open_exe(&output)?, unb64(&catalog.key_base64)?)?;
         assert_eq!(&*reader.all(10_000_000)?, &fs::read(&input)?);
-        for kind in ["presentation", "pdf", "text"] {
+        for kind in ["presentation", "pdf", "text", "executable", "application"] {
             let mut info = catalog.info.clone();
             info.kind = kind.into();
             assert!(!crate::watchdog::enabled_for(&info));

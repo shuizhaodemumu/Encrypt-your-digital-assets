@@ -2,11 +2,11 @@
 
 [English](README.md) · Rust · Windows、Ubuntu 与安卓
 
-为视频、音频、演示文稿、图片和文档提供离线加密、设备绑定与 LIC 授权。请按接收方的操作系统选择版本：
+为 Windows 程序目录、视频、音频、演示文稿、图片和文档提供离线加密、设备绑定与 LIC 授权。请按接收方的操作系统选择版本：
 
 | 版本 | 下载 | 源码与使用说明 |
 | --- | --- | --- |
-| Windows x64 · 2.5.2 | [Windows 便携包](https://github.com/shuizhaodemumu/Encrypt-your-digital-assets/releases/tag/v2.5.2) | 仓库根目录；下文为 Windows 说明 |
+| Windows x64 · 2.6.0 | [Windows 便携包](https://github.com/shuizhaodemumu/Encrypt-your-digital-assets/releases/tag/v2.6.0) | 仓库根目录；下文为 Windows 说明 |
 | Ubuntu x86_64 · 0.1.3 | [DEB 安装包 / 自带运行库 RUN](https://github.com/shuizhaodemumu/Encrypt-your-digital-assets/releases/tag/ubuntu-v0.1.3) | [Ubuntu 使用与构建](ubuntu/README.zh-CN.md) · [验证范围](ubuntu/VALIDATION.md) |
 | 安卓 ARM64 · 0.1.0 预览版 | [安卓 APK + 独立 Windows 授权工具](https://github.com/shuizhaodemumu/Encrypt-your-digital-assets/releases/tag/android-v0.1.0-preview) | [安卓使用与构建](android/README.md) · [验证范围](android/VALIDATION.md) |
 
@@ -16,13 +16,28 @@ Ubuntu 自带 VLC、GTK、Poppler 和 LibreOffice，**不创建开机或登录�
 
 ## 两个平台统一视觉
 
-Windows 2.5.2 延续淡紫色背景、半透明卡片与龙娘形象，去除白色系统标题栏，保留窗口拖动、缩放、最小化与关闭。导入、加密和签发后保持相同双栏布局，不打开预览或显示硬件明文报告。
+Windows 2.6.0 延续淡紫色背景、半透明卡片与龙娘形象，去除白色系统标题栏，保留窗口拖动、缩放、最小化与关闭。导入、加密和签发后保持相同双栏布局，不打开预览或显示硬件明文报告。
 
 两个版本统一使用**抱着紫色锁的白发小龙娘**图标。Windows 把多尺寸 ICO 写入 EXE、窗口与安装入口，新打包的内容 EXE 也会继承；Ubuntu 的 DEB/RUN 同时包含菜单图标、窗口图标和八种尺寸。更新管理员程序不会自动修改已分发的旧内容程序。
 
 ![统一应用图标](assets/app-icon.png)
 
-## 2.5.2 更新重点
+## Windows 2.6.0：EXE 与 DLL 整目录授权
+
+新增 Windows 程序目录加密：选择主 EXE，将同目录的 DLL、配置、资源、子目录和空目录一起封装，接收者通过设备绑定 LIC 后运行。输出 EXE 必须放在源程序文件夹之外。
+
+- 先把程序和必需依赖整理到独立文件夹，确认原程序正常运行，再导入主 EXE 并确认打包范围。
+- `工具.exe` 默认输出 `工具-授权.exe`（以保存对话框为准），配套文件默认沿用源名：`工具.olmeta`、`工具.josn`、`工具.lic`。
+- 程序类内容不启用看门狗、故障重启、全屏或开机自启动；原程序自身的行为不由包装器改写。
+- 运行时按原目录结构恢复到隔离临时会话，以主 EXE 所在目录作为工作目录。关闭授权窗口或授权失效会结束该会话的进程树。
+- 正常退出后清理临时文件；写在临时程序目录中的数据也会清理，重要结果请保存到外部位置。
+- 不自动安装 .NET、VC++、服务、驱动或 COM 注册组件；需提权的软件应以管理员身份启动授权包装程序。
+
+本版仍为离线 LIC 授权，不包含 2.7 联网管理预览。原有视频、音频、PPT、图片和文档功能保留。程序运行时必须恢复可执行文件，不能保证抵御本机管理员或运行时明文提取。
+
+[程序加密使用说明](docs/Windows-2.6.0-executable-licensing.md) · [本版验证记录](docs/Windows-2.6.0-validation.md)
+
+## 继承自 2.5.2 的改进
 
 - PPT 保存/另存为按受保护文稿拦截；退出丢弃修改与墨迹批注，不影响另开的普通文稿。
 - 临时文件使用独占会话锁；正常结束清理，异常退出残留在下次启动时回收，活跃会话保留。
@@ -34,7 +49,7 @@ Windows 2.5.2 延续淡紫色背景、半透明卡片与龙娘形象，去除白
 
 [更新日志](CHANGELOG.md) · [2.5.2 验证与边界](docs/Windows-2.5.2-validation.md)
 
-## Windows 2.5.2
+## Windows 2.6.0
 
 把视频、PPT、图片和文档打包成加密 Windows EXE，再为接收者签发离线、设备绑定的授权。接收者导出加密设备报告，管理员返回 `.lic` 文件，导入验证后才能打开内容，不需要在线激活服务器。
 
@@ -44,6 +59,7 @@ Windows 2.5.2 延续淡紫色背景、半透明卡片与龙娘形象，去除白
 
 | 内容或功能 | 当前行为 |
 | --- | --- |
+| EXE 与 DLL | 加密主程序所在文件夹，验证 LIC 后授权启动；无看门狗、全屏或登录自启动。 |
 | 视频 | MP4、MKV、AVI、MOV、WEBM 使用内置 LibVLC；授权后默认全屏、隐藏控件、单文件循环。到结尾由播放器重复，不关闭再重开EXE。MOV采用随附avformat解复用器。 |
 | 音频 | MP3、WAV、M4A、FLAC、OGG由LibVLC播放，提供播放与音量控制；不把视频循环策略泛化成所有音频都循环。 |
 | PowerPoint | 加密原始PPT/PPTX/PPS/PPSX，通过桌面版PowerPoint COM接口放映，保留动画、切换等原文稿功能，不转静态PDF。实际兼容性取决于PowerPoint版本和文稿本身。 |

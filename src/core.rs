@@ -505,7 +505,16 @@ impl Package {
             crate::i18n::text("内容包参数无效")
         );
         ensure!(
-            ["media", "pdf", "text", "image", "presentation"].contains(&info.kind.as_str()),
+            [
+                "media",
+                "pdf",
+                "text",
+                "image",
+                "presentation",
+                "executable",
+                "application"
+            ]
+            .contains(&info.kind.as_str()),
             crate::i18n::text("不支持的查看格式")
         );
         public(&info)?;

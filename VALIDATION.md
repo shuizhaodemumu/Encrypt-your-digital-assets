@@ -1,3 +1,9 @@
+# Windows 2.6.0 current validation
+
+[本次发布验证 / Release validation](docs/Windows-2.6.0-validation.md). 29 passed, 3 ignored; real EXE + DLL licensing and cleanup passed.
+
+## Historical records
+
 # Windows 2.5.2 current validation
 
 See [2.5.2 PowerPoint and cleanup](docs/Windows-2.5.2-validation.md) and [2.5.1 background packaging/UI](docs/Windows-2.5.1-validation.md). Historical checks below describe earlier builds, not an assertion that old preview-based scripts still match the current UI.
