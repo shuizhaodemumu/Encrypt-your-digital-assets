@@ -2309,7 +2309,7 @@ impl App {
                     },
                 };
                 let label = wide(if matches!(self.role, Role::Administrator) {
-                    "在线模式需先创建或选择组；发行者私钥不上传 NAS。\n切换离线模式不会解除已有内容的在线监管。"
+                    crate::tr!("原文件加密 · 设备绑定授权\n首次导入窗口与激活后的使用期限分别计算。", "Encrypted originals · Device-bound licenses\nImport deadline and activated usage period are independent.")
                 } else if matches!(&self.role,Role::Viewer(i) if matches!(i.kind.as_str(),"executable"|"application"))
                 {
                     "Windows 程序授权运行 / EXE 与 DLL 加密\n导入 LIC 后启动程序；不强制全屏、不设置自启动、不自动重启。\n请保留此授权窗口；关闭窗口或授权到期会结束程序。\n需要保留的文件请保存到程序临时目录之外。"
