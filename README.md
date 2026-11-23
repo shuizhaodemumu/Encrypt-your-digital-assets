@@ -7,6 +7,7 @@ Offline encryption and device-bound licensing for Windows application folders, v
 | Edition | Download | Source and usage |
 | --- | --- | --- |
 | Windows x64 · 2.6.0 | [Portable Windows package](https://github.com/shuizhaodemumu/Encrypt-your-digital-assets/releases/tag/v2.6.0) | Root source; Windows details below |
+| Windows online · 2.7.0-preview.1 | [Windows 联网验证版 ZIP](https://github.com/shuizhaodemumu/Encrypt-your-digital-assets/releases/tag/windows-online-v2.7.0-preview.1) | [独立分支 windows-online](https://github.com/shuizhaodemumu/Encrypt-your-digital-assets/tree/windows-online) · [使用说明](https://github.com/shuizhaodemumu/Encrypt-your-digital-assets/blob/windows-online/docs/WINDOWS-ONLINE.zh-CN.md) |
 | Ubuntu x86_64 · 0.1.3 | [DEB and self-contained RUN](https://github.com/shuizhaodemumu/Encrypt-your-digital-assets/releases/tag/ubuntu-v0.1.3) | [Ubuntu README](ubuntu/README.md) · [Validation](ubuntu/VALIDATION.md) |
 | Android ARM64 · 0.1.0 preview | [Android APK + dedicated Windows administrator](https://github.com/shuizhaodemumu/Encrypt-your-digital-assets/releases/tag/android-v0.1.0-preview) | [Android source and usage](android/README.md) · [Validation](android/VALIDATION.md) |
 
