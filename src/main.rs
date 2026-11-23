@@ -9,6 +9,7 @@ mod i18n;
 mod install;
 mod issuance;
 mod native;
+mod online_admin;
 mod packaging;
 mod platform;
 mod ppt_dialog;
@@ -201,6 +202,7 @@ fn run() -> Result<()> {
                 ensure!(source != out && out != exe, "不能覆盖源文件或管理员程序");
                 let pubkey = issuer.spki()?;
                 let info = PackageInfo {
+                    online: online_admin::selected_policy()?,
                     custom_activation_window: true,
                     version: 2,
                     content_id: uuid::Uuid::new_v4(),
@@ -214,6 +216,7 @@ fn run() -> Result<()> {
                     hardware_policy: crate::hardware::STABLE.into(),
                     enrollment_public_key: issuer.enrollment_public()?,
                 };
+                online_admin::register(&info)?;
                 let key = random::<32>();
                 let temp = out.with_extension("pkg");
                 write_package(source, &temp, &info, &key)?;

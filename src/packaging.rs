@@ -122,6 +122,7 @@ pub fn build(
         ensure!(size > 0, "文件为空");
         let public = issuer.spki()?;
         let info = PackageInfo {
+            online: crate::online_admin::selected_policy()?,
             custom_activation_window: true,
             version: 2,
             content_id: uuid::Uuid::new_v4(),
@@ -139,6 +140,7 @@ pub fn build(
             hardware_policy: crate::hardware::STABLE.into(),
             enrollment_public_key: issuer.enrollment_public()?,
         };
+        crate::online_admin::register(&info)?;
         let key = zeroize::Zeroizing::new(random::<32>());
         let package = dir.join("content.pkg");
         write_package_progress(source, &package, &info, &*key, |done, total| {

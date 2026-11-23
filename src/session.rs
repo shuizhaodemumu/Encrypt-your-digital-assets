@@ -1,11 +1,12 @@
 use crate::{core::*, platform::*};
-use anyhow::{ensure, Result};
+use anyhow::{ensure, Context, Result};
 use std::{
     path::Path,
     sync::{Arc, Mutex},
     time::Instant,
 };
 pub struct Session {
+    lease: Option<online_license::Lease>,
     pub info: PackageInfo,
     pub state: ActivationState,
     pub body: Option<LicenseBody>,
@@ -18,6 +19,7 @@ pub type Authorization = Arc<Mutex<Session>>;
 impl Session {
     pub fn new(info: PackageInfo) -> Self {
         Self {
+            lease: None,
             info,
             state: ActivationState::default(),
             body: None,
@@ -28,6 +30,14 @@ impl Session {
         }
     }
     pub fn validate(&mut self) -> Result<()> {
+        if self.info.online.is_some() {
+            ensure!(self.active, "授权已停止");
+            self.lease
+                .as_ref()
+                .context("尚未取得在线运行许可")?
+                .check()?;
+            return Ok(());
+        }
         self.validate_at(now())
     }
     #[cfg(feature = "watchdog-test-mode")]
@@ -79,7 +89,16 @@ impl Session {
         );
         let r = self.state.current.as_ref().unwrap();
         let b = verify(&r.license, &self.info, &device.id)?;
-        check(r, &b, now())?;
+        if let Some(policy) = self.info.online.clone() {
+            self.lease = Some(online_license::Lease::start(
+                policy,
+                self.info.content_id.to_string(),
+                device.id.clone(),
+                serde_json::to_value(&r.license)?,
+            )?);
+        } else {
+            check(r, &b, now())?;
+        }
         let key = device.unwrap(&b.wrapped_content_key)?.to_vec();
         self.body = Some(b);
         self.baseline = now();
@@ -91,6 +110,34 @@ impl Session {
     pub fn import(&mut self, path: &Path, device: &Device, exe: &Path) -> Result<Vec<u8>> {
         let s: SignedLicense = read_json(path)?;
         let b = verify(&s, &self.info, &device.id)?;
+        if let Some(policy) = self.info.online.clone() {
+            let lease = online_license::Lease::start(
+                policy,
+                self.info.content_id.to_string(),
+                device.id.clone(),
+                serde_json::to_value(&s)?,
+            )?;
+            let grant = lease.check()?;
+            let key = device.unwrap(&b.wrapped_content_key)?.to_vec();
+            ensure!(key.len() == 32, "密钥无效");
+            let mut reader = Reader::new(Package::open_exe(exe)?, key.clone())?;
+            reader.read(&mut [0u8; 1])?;
+            self.state = ActivationState {
+                current: Some(ActivationRecord {
+                    license: s,
+                    activated_at_utc_seconds: grant.activated,
+                    expires_at_utc_seconds: grant.expires,
+                    last_seen_utc_seconds: grant.time,
+                }),
+                used: vec![b.license_id],
+                locked: false,
+            };
+            self.body = Some(b);
+            self.lease = Some(lease);
+            self.active = true;
+            self.save()?;
+            return Ok(key);
+        }
         let mut old = load_state(self.info.content_id).unwrap_or(ActivationState {
             current: None,
             used: vec![],
@@ -133,6 +180,10 @@ impl Session {
     }
     pub fn lock(&mut self) {
         self.active = false;
+        if self.info.online.is_some() {
+            self.lease.take();
+            return;
+        }
         self.state.locked = true;
         let _ = self.save();
     }

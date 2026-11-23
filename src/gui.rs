@@ -19,6 +19,10 @@ use windows_sys::Win32::{
     System::LibraryLoader::{GetModuleHandleW, LoadLibraryW},
     UI::{Controls::Dialogs::*, Controls::*, Input::KeyboardAndMouse::*, WindowsAndMessaging::*},
 };
+const ONLINE_CONFIG: usize = 310;
+const ONLINE_CREATE: usize = 311;
+const ONLINE_SELECT: usize = 312;
+const ONLINE_OFF: usize = 313;
 const CLASS: &str = "RustVlcOfflineWindow";
 const TBM_GETPOS: u32 = 0x0400;
 const SS_BLACKRECT: u32 = 0x0004;
@@ -642,6 +646,10 @@ impl App {
                 self.add(crate::i18n::text("加密密钥备份"), BACKUP, 44, 198, 210);
                 self.add(crate::i18n::text("导入内容包"), IMPORT, 266, 198, 210);
                 self.add(crate::i18n::text("生成内容 EXE"), BUILD, 44, 246, 210);
+                self.add("连接在线管理器", ONLINE_CONFIG, 40, 632, 160);
+                self.add("创建组", ONLINE_CREATE, 210, 632, 120);
+                self.add("选择组", ONLINE_SELECT, 340, 632, 120);
+                self.add("切换离线模式", ONLINE_OFF, 470, 632, 150);
                 self.add(crate::i18n::text("选择已有内容包"), SELECT, 266, 246, 210);
                 control(
                     self.hwnd,
@@ -866,7 +874,10 @@ impl App {
                 (BACKUP, self.issuer.is_some()),
                 (IMPORT, self.issuer.is_some()),
                 (SELECT, self.issuer.is_some()),
-                (BUILD, self.issuer.is_some() && self.input.is_some()),
+                (
+                    BUILD,
+                    self.issuer.is_some() && self.input.is_some() && crate::online_admin::ready(),
+                ),
                 (
                     ISSUE,
                     self.issuer.is_some() && self.catalog.is_some() && parsed.is_ok(),
@@ -1503,6 +1514,77 @@ impl App {
             return Ok(());
         }
         match id {
+            ONLINE_CONFIG => {
+                let config: online_license::AdminConfig =
+                    serde_json::from_value(serde_json::to_value(crate::online_admin::load()?)?)?;
+                if let Some(config) = online_license::settings::edit(self.hwnd, config)? {
+                    let c: crate::online_admin::Config =
+                        serde_json::from_value(serde_json::to_value(config)?)?;
+                    crate::online_admin::save(&c)?;
+                    self.status(&if c.enabled {
+                        format!("联网模式 · 当前组：{}", c.group_name)
+                    } else {
+                        "离线模式".into()
+                    });
+                }
+            }
+            ONLINE_CREATE | ONLINE_SELECT => {
+                let mut c = crate::online_admin::load()?;
+                ensure!(c.enabled, "请先连接在线管理器");
+                let id = if id == ONLINE_CREATE {
+                    let Some(name) = prompt(self.hwnd, "创建组：输入组名称", false) else {
+                        return Ok(());
+                    };
+                    crate::online_admin::create(&c, &name)?["id"]
+                        .as_str()
+                        .context("创建组失败")?
+                        .to_string()
+                } else {
+                    let list = crate::online_admin::list(&c)?;
+                    let groups = list["groups"].as_array().context("组列表无效")?;
+                    let options: Vec<_> = groups.iter().filter(|g| g["enabled"] == true).collect();
+                    ensure!(!options.is_empty(), "没有可用组，请先创建组");
+                    let label = options
+                        .iter()
+                        .enumerate()
+                        .map(|(i, g)| format!("{}：{}", i + 1, g["name"].as_str().unwrap_or("")))
+                        .collect::<Vec<_>>()
+                        .join("\n");
+                    let Some(choice) =
+                        prompt(self.hwnd, &format!("选择组：输入序号\n{label}"), false)
+                    else {
+                        return Ok(());
+                    };
+                    let n: usize = choice.trim().parse().context("请输入有效序号")?;
+                    ensure!(n > 0 && n <= options.len(), "组序号无效");
+                    options[n - 1]["id"].as_str().unwrap().into()
+                };
+                let list = crate::online_admin::list(&c)?;
+                let group = list["groups"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .find(|g| g["id"] == id && g["enabled"] == true)
+                    .context("组已不可用")?;
+                c.group_name = group["name"].as_str().unwrap().into();
+                c.policy = Some(online_license::Policy {
+                    server_ca: c.server_ca.clone(),
+                    server_url: c.url.clone(),
+                    server_key: list["server_key"].as_str().context("公钥缺失")?.into(),
+                    group_id: id,
+                });
+                crate::online_admin::save(&c)?;
+                self.status(&format!(
+                    "联网模式 · 当前组：{}。生成内容将登记到此组。",
+                    c.group_name
+                ));
+            }
+            ONLINE_OFF => {
+                let mut c = crate::online_admin::load()?;
+                c.enabled = false;
+                crate::online_admin::save(&c)?;
+                self.status("离线模式：仅影响之后新生成的内容，已生成的联网内容仍接受监管。");
+            }
             LANGUAGE_TOGGLE => self.change_language(
                 if crate::i18n::current() == crate::i18n::Language::English {
                     crate::i18n::Language::Chinese
@@ -1628,6 +1710,7 @@ impl App {
                 }
             }
             BUILD => {
+                ensure!(crate::online_admin::ready(), "联网模式请先创建或选择组");
                 let input = self
                     .input
                     .as_ref()
@@ -2309,7 +2392,7 @@ impl App {
                     },
                 };
                 let label = wide(if matches!(self.role, Role::Administrator) {
-                    crate::tr!("原文件加密 · 设备绑定授权\n首次导入窗口与激活后的使用期限分别计算。", "Encrypted originals · Device-bound licenses\nImport deadline and activated usage period are independent.")
+                    "在线模式需先创建或选择组；发行者私钥不上传 NAS。\n切换离线模式不会解除已有内容的在线监管。"
                 } else if matches!(&self.role,Role::Viewer(i) if matches!(i.kind.as_str(),"executable"|"application"))
                 {
                     "Windows 程序授权运行 / EXE 与 DLL 加密\n导入 LIC 后启动程序；不强制全屏、不设置自启动、不自动重启。\n请保留此授权窗口；关闭窗口或授权到期会结束程序。\n需要保留的文件请保存到程序临时目录之外。"

@@ -10,6 +10,8 @@ jobs:
       - uses: actions/checkout@v7.0.1
       - uses: dtolnay/rust-toolchain@stable
       - run: cargo fmt --check
+      - run: cargo fmt --manifest-path online-license/Cargo.toml --check
+      - run: cargo test --manifest-path online-license/Cargo.toml --locked
       - run: cargo test --locked
       - run: cargo build --locked --release
       - uses: actions/upload-artifact@v7.0.2

@@ -1,5 +1,7 @@
 # Encrypt your digital assets
 
+> **Windows 联网验证预览版 / Windows online preview 2.7.0-preview.1** — [使用说明 / Guide](docs/WINDOWS-ONLINE.zh-CN.md) · [Download](https://github.com/shuizhaodemumu/Encrypt-your-digital-assets/releases/tag/windows-online-v2.7.0-preview.1). Requires an existing compatible server. The offline 2.6.0 description below is retained as a feature reference.
+
 [中文说明](README.zh-CN.md) · Rust · Windows · Ubuntu · Android
 
 Offline encryption and device-bound licensing for Windows application folders, video, audio, presentations, images and documents. Choose the edition for the recipient's operating system:
@@ -7,6 +9,7 @@ Offline encryption and device-bound licensing for Windows application folders, v
 | Edition | Download | Source and usage |
 | --- | --- | --- |
 | Windows x64 · 2.6.0 | [Portable Windows package](https://github.com/shuizhaodemumu/Encrypt-your-digital-assets/releases/tag/v2.6.0) | Root source; Windows details below |
+| Windows online · 2.7.0-preview.1 | [Windows ZIP](https://github.com/shuizhaodemumu/Encrypt-your-digital-assets/releases/tag/windows-online-v2.7.0-preview.1) | [联网验证说明](docs/WINDOWS-ONLINE.zh-CN.md) · `windows-online` |
 | Ubuntu x86_64 · 0.1.3 | [DEB and self-contained RUN](https://github.com/shuizhaodemumu/Encrypt-your-digital-assets/releases/tag/ubuntu-v0.1.3) | [Ubuntu README](ubuntu/README.md) · [Validation](ubuntu/VALIDATION.md) |
 | Android ARM64 · 0.1.0 preview | [Android APK + dedicated Windows administrator](https://github.com/shuizhaodemumu/Encrypt-your-digital-assets/releases/tag/android-v0.1.0-preview) | [Android source and usage](android/README.md) · [Validation](android/VALIDATION.md) |
 

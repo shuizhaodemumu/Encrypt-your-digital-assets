@@ -104,6 +104,8 @@ pub struct DeviceRequest {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "PascalCase", deny_unknown_fields)]
 pub struct PackageInfo {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub online: Option<online_license::Policy>,
     #[serde(default)]
     pub custom_activation_window: bool,
     pub version: i32,
@@ -123,6 +125,8 @@ pub struct PackageInfo {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "PascalCase", deny_unknown_fields)]
 pub struct LicenseBody {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub online: Option<online_license::Policy>,
     pub version: i32,
     pub license_id: Uuid,
     pub content_id: Uuid,
@@ -220,6 +224,7 @@ pub fn verify(s: &SignedLicense, info: &PackageInfo, device: &str) -> Result<Lic
         .map_err(|_| anyhow::anyhow!(crate::i18n::text("授权签名无效")))?;
     let b: LicenseBody = decode(&raw, 65536)?;
     validate_body(&b)?;
+    ensure!(b.online == info.online, "LIC 联网监管配置不匹配");
     ensure!(
         b.version == info.version,
         crate::i18n::text("授权协议版本与内容包不一致")
@@ -429,6 +434,7 @@ pub fn issue_with_window(
     window_seconds: i64,
     time: i64,
 ) -> Result<SignedLicense> {
+    let time = crate::online_admin::signing_time(&c.info, time)?;
     expiry(time, days)?;
     let deadline = activation_deadline(time, window_seconds)?;
     expiry(deadline - 1, days)?;
@@ -444,6 +450,7 @@ pub fn issue_with_window(
     let key = Zeroizing::new(unb64(&c.key_base64)?);
     let wrapped = rsa.encrypt(&mut OsRng, Oaep::new::<Sha256>(), &key)?;
     issuer.sign(&LicenseBody {
+        online: c.info.online.clone(),
         version: c.info.version,
         license_id: Uuid::new_v4(),
         content_id: c.info.content_id,
@@ -729,6 +736,7 @@ mod tests {
         let issuer = Issuer::create()?;
         let spki = issuer.spki()?;
         let info = PackageInfo {
+            online: None,
             custom_activation_window: true,
             version: 1,
             content_id: Uuid::new_v4(),
@@ -879,6 +887,7 @@ mod tests {
     #[test]
     fn windows_boundaries() {
         let b = LicenseBody {
+            online: None,
             version: 1,
             license_id: Uuid::new_v4(),
             content_id: Uuid::new_v4(),

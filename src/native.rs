@@ -496,6 +496,7 @@ mod tests {
         let issuer = Issuer::create()?;
         let public = issuer.spki()?;
         let info = PackageInfo {
+            online: None,
             custom_activation_window: true,
             version: 1,
             content_id: uuid::Uuid::new_v4(),
@@ -523,6 +524,7 @@ mod tests {
         // In-memory active-session fixture. Signature/enrollment validation is
         // separately covered by the normal tests; no device state is persisted.
         let body = LicenseBody {
+            online: None,
             version: 1,
             license_id: uuid::Uuid::new_v4(),
             content_id: info.content_id,
@@ -692,6 +694,7 @@ mod tests {
         let issuer = Issuer::create()?;
         let public = issuer.spki()?;
         let info = PackageInfo {
+            online: None,
             custom_activation_window: true,
             version: 1,
             content_id: uuid::Uuid::new_v4(),

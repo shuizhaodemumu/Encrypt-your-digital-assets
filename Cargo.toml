@@ -1,6 +1,6 @@
 [package]
 name = "offline-license-rust"
-version = "2.6.0"
+version = "2.7.0-preview.1"
 edition = "2021"
 
 [features]
@@ -8,6 +8,7 @@ watchdog-test-mode = []
 office-state-compat = []
 
 [dependencies]
+online-license = { path = "online-license" }
 anyhow = "1.0"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
@@ -38,3 +39,4 @@ opt-level = 2
 lto = "thin"
 strip = true
 panic = "unwind"
+
