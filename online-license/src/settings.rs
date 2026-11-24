@@ -1,4 +1,6 @@
 use crate::*;
+use windows_sys::Win32::Graphics::Gdi::*;
+const LAVENDER: u32 = 0x00fbf1f6;
 use windows_sys::Win32::{
     Foundation::*,
     System::LibraryLoader::GetModuleHandleW,
@@ -29,10 +31,43 @@ unsafe extern "system" fn procedure(h: HWND, m: u32, w: WPARAM, l: LPARAM) -> LR
         SetWindowLongPtrW(h, GWLP_USERDATA, c.lpCreateParams as isize);
         return DefWindowProcW(h, m, w, l);
     }
+    if m == WM_ERASEBKGND || m == WM_CTLCOLORSTATIC {
+        let dc = w as HDC;
+        SetDCBrushColor(dc, LAVENDER);
+        let brush = GetStockObject(DC_BRUSH) as HBRUSH;
+        if m == WM_CTLCOLORSTATIC {
+            SetBkColor(dc, LAVENDER);
+            SetTextColor(dc, 0x006c3654);
+            return brush as isize;
+        }
+        let mut rect: RECT = std::mem::zeroed();
+        GetClientRect(h, &mut rect);
+        FillRect(dc, &rect, brush);
+        let bmp = include_bytes!("dragon.bmp");
+        let mut info: BITMAPINFO = std::mem::zeroed();
+        info.bmiHeader = std::ptr::read_unaligned(bmp.as_ptr().add(14) as *const BITMAPINFOHEADER);
+        let offset = u32::from_le_bytes(bmp[10..14].try_into().unwrap()) as usize;
+        StretchDIBits(
+            dc,
+            528,
+            78,
+            190,
+            230,
+            0,
+            0,
+            190,
+            230,
+            bmp.as_ptr().add(offset).cast(),
+            &info,
+            DIB_RGB_COLORS,
+            SRCCOPY,
+        );
+        return 1;
+    }
     if !matches!(m, WM_COMMAND | WM_TIMER | WM_CLOSE) {
         return DefWindowProcW(h, m, w, l);
     }
-    if m == WM_COMMAND && !matches!(w & 65535, 3 | 5 | 7 | 9) {
+    if m == WM_COMMAND && !matches!(w & 65535, 3 | 7) {
         return 0;
     }
     let p = GetWindowLongPtrW(h, GWLP_USERDATA) as *mut Ui;
@@ -43,13 +78,13 @@ unsafe extern "system" fn procedure(h: HWND, m: u32, w: WPARAM, l: LPARAM) -> LR
     match m {
         WM_COMMAND => {
             let id = w & 65535;
-            if id == 3 || id == 5 {
+            if id == 3 {
                 if u.rx.is_some() {
                     return 0;
                 }
                 let url = get(GetDlgItem(h, 1)).trim_end_matches('/').to_string();
                 let token = get(GetDlgItem(h, 2));
-                let name = get(GetDlgItem(h, 4));
+
                 let cert_path = get(GetDlgItem(h, 12));
                 let ca = if cert_path.trim() == "[已保存证书]" {
                     u.config.server_ca.clone()
@@ -72,24 +107,14 @@ unsafe extern "system" fn procedure(h: HWND, m: u32, w: WPARAM, l: LPARAM) -> LR
                 status(h, "正在连接，请稍候…");
                 EnableWindow(GetDlgItem(h, 7), 0);
                 std::thread::spawn(move || {
-                    let r = (|| {
-                        if id == 5 {
-                            admin_with_ca(
-                                &url,
-                                &token,
-                                Some(&json!({"op":"create_group","name":name,"note":""})),
-                                ca.as_deref(),
-                            )?;
-                        }
-                        admin_with_ca(&url, &token, None, ca.as_deref())
-                    })();
+                    let r = admin_with_ca(&url, &token, None, ca.as_deref());
                     let _ = tx.send(r);
                 });
             }
             if id == 7 && u.rx.is_none() {
                 let index = SendMessageW(GetDlgItem(h, 6), CB_GETCURSEL, 0, 0);
                 if index < 0 {
-                    status(h, "请先连接服务器并创建或选择组");
+                    status(h, "请连接服务器并选择已有组");
                     return 0;
                 }
                 if let Some(g) = u.groups.as_array().and_then(|a| a.get(index as usize)) {
@@ -108,12 +133,6 @@ unsafe extern "system" fn procedure(h: HWND, m: u32, w: WPARAM, l: LPARAM) -> LR
                         DestroyWindow(h);
                     }
                 }
-            }
-            if id == 9 {
-                u.config.enabled = false;
-                u.saved = true;
-                u.done = true;
-                DestroyWindow(h);
             }
             0
         }
@@ -144,10 +163,15 @@ unsafe extern "system" fn procedure(h: HWND, m: u32, w: WPARAM, l: LPARAM) -> LR
                                 );
                             }
                             SendMessageW(combo, CB_SETCURSEL, 0, 0);
-                            EnableWindow(GetDlgItem(h, 7), 1);
+                            let available = !u.groups.as_array().unwrap().is_empty();
+                            EnableWindow(GetDlgItem(h, 7), available as i32);
                             status(
                                 h,
-                                "已连接。请选择组并保存；创建组后也需保存。可与 NAS 后台核对公钥。",
+                                if available {
+                                    "已连接，请选择授权组并保存。"
+                                } else {
+                                    "没有可用组，请到 NAS 在线平台创建后刷新。"
+                                },
                             );
                         }
                         Err(e) => status(h, &format!("连接失败：{e}")),
@@ -172,7 +196,7 @@ pub fn edit(owner: HWND, config: AdminConfig) -> Result<Option<AdminConfig>> {
         wc.lpfnWndProc = Some(procedure);
         wc.hInstance = instance;
         wc.lpszClassName = class.as_ptr();
-        wc.hbrBackground = 6;
+        wc.hbrBackground = 0;
         wc.hCursor = LoadCursorW(0, IDC_ARROW);
         RegisterClassW(&wc);
         let mut ui = Box::new(Ui {
@@ -187,11 +211,11 @@ pub fn edit(owner: HWND, config: AdminConfig) -> Result<Option<AdminConfig>> {
             WS_EX_DLGMODALFRAME,
             class.as_ptr(),
             wide("在线监管 · 连接与组管理").as_ptr(),
-            WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU,
+            WS_CLIPCHILDREN | WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU,
             CW_USEDEFAULT,
             CW_USEDEFAULT,
-            720,
-            490,
+            760,
+            460,
             owner,
             0,
             instance,
@@ -221,91 +245,44 @@ pub fn edit(owner: HWND, config: AdminConfig) -> Result<Option<AdminConfig>> {
                 std::ptr::null(),
             )
         };
-        control("STATIC", "HTTPS 服务器地址", 10, 20, 20, 200, 24, 0);
+        let edit = WS_BORDER | ES_AUTOHSCROLL as u32 | WS_TABSTOP;
+        control("STATIC", "在线授权 · 连接管理器", 14, 24, 18, 470, 26, 0);
+        control("STATIC", "HTTPS 服务器地址", 10, 24, 57, 475, 22, 0);
         control(
             "EDIT",
-            &ui.config.url,
+            if ui.config.url.trim().is_empty() {
+                option_env!("LICENSE_MANAGER_DEFAULT_URL").unwrap_or("")
+            } else {
+                &ui.config.url
+            },
             1,
-            20,
-            48,
-            660,
-            28,
-            WS_BORDER | ES_AUTOHSCROLL as u32,
-        );
-        control(
-            "STATIC",
-            "管理员令牌（不写入内容包）",
-            11,
-            20,
-            86,
-            440,
             24,
-            0,
+            80,
+            484,
+            30,
+            edit,
         );
+        control("STATIC", "管理员令牌", 11, 24, 119, 470, 22, 0);
         control(
             "EDIT",
             &ui.config.token,
             2,
-            20,
-            112,
-            470,
-            28,
-            WS_BORDER | ES_PASSWORD as u32 | ES_AUTOHSCROLL as u32,
+            24,
+            142,
+            484,
+            30,
+            edit | ES_PASSWORD as u32,
         );
-        control("BUTTON", "连接 / 刷新组", 3, 510, 110, 170, 32, 0);
-        control(
-            "EDIT",
-            "",
-            4,
-            20,
-            164,
-            470,
-            28,
-            WS_BORDER | ES_AUTOHSCROLL as u32,
-        );
-        control("BUTTON", "创建组", 5, 510, 162, 170, 32, 0);
-        control(
-            "COMBOBOX",
-            "",
-            6,
-            20,
-            214,
-            470,
-            170,
-            CBS_DROPDOWNLIST as u32 | WS_VSCROLL,
-        );
-        control("BUTTON", "选中此组并保存", 7, 510, 212, 170, 34, 0);
-        EnableWindow(GetDlgItem(h, 7), 0);
         control(
             "STATIC",
-            "连接成功后才能选组。已有的联网内容不会因切换离线模式而解除监管。",
-            8,
-            20,
-            265,
-            660,
-            62,
+            "私有 CA 证书路径（公共 HTTPS 可留空）",
+            13,
+            24,
+            181,
+            480,
+            22,
             0,
         );
-        control("BUTTON", "后续打包使用离线模式", 9, 20, 335, 260, 34, 0);
-        for id in [4, 5, 6, 7, 8, 9] {
-            let child = GetDlgItem(h, id);
-            let mut r: RECT = std::mem::zeroed();
-            GetWindowRect(child, &mut r);
-            let mut point = POINT {
-                x: r.left,
-                y: r.top,
-            };
-            windows_sys::Win32::Graphics::Gdi::ScreenToClient(h, &mut point);
-            SetWindowPos(
-                child,
-                0,
-                point.x,
-                point.y + 50,
-                0,
-                0,
-                SWP_NOSIZE | SWP_NOZORDER,
-            );
-        }
         control(
             "EDIT",
             if ui.config.server_ca.is_some() {
@@ -314,29 +291,56 @@ pub fn edit(owner: HWND, config: AdminConfig) -> Result<Option<AdminConfig>> {
                 ""
             },
             12,
-            20,
-            157,
-            660,
+            24,
+            204,
+            484,
             30,
-            WS_BORDER | ES_AUTOHSCROLL as u32,
+            edit,
         );
-        SendMessageW(
-            GetDlgItem(h, 12),
-            0x1501,
+        control("STATIC", "授权组", 15, 24, 246, 480, 22, 0);
+        control(
+            "COMBOBOX",
+            "",
+            6,
+            24,
+            269,
+            320,
+            155,
+            CBS_DROPDOWNLIST as u32 | WS_VSCROLL | WS_TABSTOP,
+        );
+        control("BUTTON", "连接 / 刷新组", 3, 354, 266, 154, 32, WS_TABSTOP);
+        control("BUTTON", "选中此组并保存", 7, 24, 316, 212, 36, WS_TABSTOP);
+        EnableWindow(GetDlgItem(h, 7), 0);
+        control(
+            "STATIC",
+            "请在 NAS 在线平台创建组，然后连接并刷新列表。",
+            8,
+            24,
+            367,
+            680,
+            34,
             0,
-            wide("NAS 私有 CA 证书路径（公共 HTTPS 可留空）").as_ptr() as isize,
         );
-        for id in 1..=12 {
+        let font = CreateFontW(
+            -16,
+            0,
+            0,
+            0,
+            400,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            5,
+            0,
+            wide("Microsoft YaHei UI").as_ptr(),
+        );
+        for id in 1..=15 {
             let child = GetDlgItem(h, id);
             if child != 0 {
-                SendMessageW(
-                    child,
-                    WM_SETFONT,
-                    windows_sys::Win32::Graphics::Gdi::GetStockObject(
-                        windows_sys::Win32::Graphics::Gdi::DEFAULT_GUI_FONT,
-                    ) as usize,
-                    1,
-                );
+                SendMessageW(child, WM_SETFONT, font as usize, 1);
             }
         }
         EnableWindow(owner, 0);
@@ -351,6 +355,7 @@ pub fn edit(owner: HWND, config: AdminConfig) -> Result<Option<AdminConfig>> {
         }
         EnableWindow(owner, 1);
         SetForegroundWindow(owner);
+        DeleteObject(font);
         Ok(if ui.saved {
             Some(ui.config.clone())
         } else {

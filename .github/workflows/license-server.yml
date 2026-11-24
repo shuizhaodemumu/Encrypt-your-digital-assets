@@ -1,0 +1,17 @@
+name: Docker licensing backend
+on: [push, workflow_dispatch]
+permissions:
+  contents: read
+jobs:
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo test --locked --manifest-path license-server/Cargo.toml
+      - working-directory: license-server
+        run: |
+          docker compose up --build --wait -d
+          curl --fail http://127.0.0.1:7187/health
+          token=$(docker compose exec -T license-manager assets-license-server --today-token)
+          curl --fail --silent -H "Authorization: Bearer $token" http://127.0.0.1:7187/api/admin | jq -e '.groups == []'

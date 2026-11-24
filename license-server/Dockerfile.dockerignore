@@ -1,0 +1,11 @@
+*
+!license-server/
+license-server/*
+!license-server/Cargo.toml
+!license-server/Cargo.lock
+!license-server/src/
+!license-server/static/
+!online-license/
+online-license/*
+!online-license/Cargo.toml
+!online-license/src/

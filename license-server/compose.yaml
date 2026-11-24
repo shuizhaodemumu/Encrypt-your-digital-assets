@@ -1,0 +1,28 @@
+services:
+  license-manager:
+    build:
+      context: ..
+      dockerfile: license-server/Dockerfile
+    image: encrypt-assets-license-manager:2.7.0
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "assets-license-server", "--healthcheck"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    ports:
+      - "127.0.0.1:7187:8080"
+    environment:
+      DATA_DIR: /data
+    volumes:
+      - license-data:/data
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    tmpfs:
+      - /tmp:size=16m
+volumes:
+  license-data:

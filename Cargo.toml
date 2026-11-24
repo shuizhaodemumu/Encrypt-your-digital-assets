@@ -1,6 +1,6 @@
 [package]
 name = "offline-license-rust"
-version = "2.7.0-preview.1"
+version = "2.7.0"
 edition = "2021"
 
 [features]

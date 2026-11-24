@@ -1,49 +1,26 @@
-# Windows 联网验证版 · 2.7.0-preview.1
+# Windows 联网正式版 2.7.0
 
-独立分支 `windows-online`，预发布版本。此次仅发布 Windows 管理员、设备请求工具及其源码；不发布 NAS 服务端、Ubuntu 或 Android 联网安装包。使用联网功能需要已有兼容的在线授权服务，本下载包不能单独部署服务器。
+本版同时提供 Windows x64 签发工作台和可自行部署的 NAS 在线管理后台。Windows 程序包内运行 Packager.exe。DeviceTool.exe 用于设备请求。自托管用户首次连接时填写自己的 HTTPS 服务地址；定制构建可在编译前设置 LICENSE_MANAGER_DEFAULT_URL。
 
-## 功能与工作方式
+## 部署与领取令牌
 
-保留视频、音频、图片、文档、PowerPoint 和附带 DLL 的 EXE 文件夹加密及设备绑定 LIC 流程。联网模式在原有授权之外增加服务器监管：
+下载并解压 Docker 部署包，进入 license-server 目录，在 Docker 主机执行：
 
-1. 打开 `Packager.exe`，创建或解锁发行者密钥。
-2. 在“在线管理”中填写授权服务 HTTPS 根地址和管理员令牌。私有 CA 部署可指定可信 CA 文件；不要关闭证书校验。
-3. 单独创建组，或刷新并选择已有组。联网模式必须选组才能生成内容 EXE。
-4. 导入原文件/应用文件夹并打包；程序先向服务器登记内容、发行者及所属组。
-5. 用户运行内容 EXE，导出设备识别文件；管理员导入后签发 LIC，用户再导入 LIC。
-6. 客户端验证本地签名与设备绑定，随后获取服务器签名的短期许可。在线管理器可按组、内容或设备授权暂停和恢复。
-
-管理员令牌只用于签发端管理连接，不写入内容程序。Windows 连接配置以 DPAPI 保护。内容策略携带服务器地址、公钥、组 ID 及可选 CA，并参与签名校验。
-
-## 必须了解的行为
-
-- 每次启动联网内容都需要连接服务器。正常约每 30 秒续期，单次许可最长 120 秒。
-- 撤销不是即时推送：正常联网在下一次续期发现撤销后停止；断网最多使用至当前短期许可到期。
-- 许可期限由服务器时间和客户端包含睡眠时间的单调计时共同约束，调整本机日期不能续长短期许可。服务器自身必须正确维护时间与持久化状态。
-- 旧离线内容不会自动变成联网内容，需要选组后重新打包并重新签发。切回离线模式仅影响后续打包。
-- 文档/PPT 和 EXE 应用不启用看门狗或开机自启动；视频维持原有播放策略。在线许可到期停止访问与看门狗重启是不同机制。
-- PowerPoint 依赖本机安装。仅放映、保存拦截和临时文件清理不能绝对阻止拥有管理员权限的攻击者提取运行时明文。
-- 建议单独解压使用。此版与稳定 Windows 版共享既有本机配置目录，不承诺配置相互隔离；请先备份发行者密钥。
-
-## 下载与构建
-
-Release 中的 Windows ZIP 包含 `Packager.exe`、`DeviceTool.exe`、使用说明和第三方许可证。两种 EXE 为同一程序的不同入口名称。源代码可从本分支或 Release source.zip 获取。
-
-在安装 Rust stable 与 Windows C++ 构建工具的机器上：
-
-```powershell
-cargo fmt --check
-cargo test --locked
-cargo test --locked --manifest-path online-license/Cargo.toml
-cargo build --release --locked
+```sh
+docker compose up -d --build
+curl -f http://127.0.0.1:7187/health
+docker compose exec license-manager assets-license-server --today-token
 ```
 
-生成 `target/release/offline-license-rust.exe`，复制并命名为 `Packager.exe` 或 `DeviceTool.exe`。播放器与资源沿用仓库 assets；MIT 适用于本项目源码，捆绑依赖遵循各自许可证。
+首次构建需要联网下载基础镜像和 Rust 依赖。用反向代理将有效 HTTPS 域名转发到同一主机的 127.0.0.1:7187。浏览器访问 HTTPS 根地址，用当天令牌登录。北京时间每天 04:00 换发；过期后在容器内重新领取。数据库和签名密钥保存在 license-data 卷，请一并备份。升级已有部署时沿用原 Compose 项目名称和数据卷。
 
-## 验证记录
+## 授权流程
 
-本次发布源码：Windows 测试 29 项通过，3 项需要桌面/PowerPoint 的交互测试未执行；公共协议 2 项通过。发布程序从本分支源码重新构建。
+1. 在 NAS 后台创建组。在 win授权工作台连接管理器，填写当天令牌，刷新并选择组。
+2. 使用发行者密钥打包内容，导入收件人设备请求并签发 LIC。客户端本地校验 LIC 后向服务器取得签名短期许可。
+3. 后台支持按组、内容或设备授权暂停和恢复。正常约 30 秒续期，断网时仅可运行到本次许可到期（最长 120 秒）。旧离线内容需重新打包再签发才能加入管理。
+4. 管理员令牌仅在管理端使用。公开部署包内不含运行数据库、发行者私钥或管理员凭据。
 
-此前联网集成验收覆盖：EXE+DLL 授权运行、组撤销停止进程树、恢复授权；HTTPS 证书校验、选组保存以及真实服务 LIC 激活/撤销/恢复。此次没有重新执行全部真实服务器或重启验收。预发布用于试用，不替换稳定版 2.6.0。
+## 从源码构建
 
-发布包不包含管理员令牌、NAS 登录信息、发行者私钥或部署私钥。
+Windows 使用 Rust stable，在仓库根目录运行 `cargo build --release --locked`。服务端入口位于 license-server，协议位于 online-license。自行构建 Docker 使用上面的 Compose 命令。本项目源码按 MIT 开源，捆绑第三方组件按各自许可证分发。
