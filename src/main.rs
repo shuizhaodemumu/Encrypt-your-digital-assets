@@ -80,8 +80,8 @@ fn run() -> Result<()> {
     presentation::cleanup_abandoned();
     executable::cleanup_abandoned();
     if let Some(info) = info.as_ref() {
-        if !watchdog::enabled_for(info) {
-            watchdog::disable_startup(info)?;
+        watchdog::disable_startup(info)?;
+        {
             if args.iter().any(|a| a == "--autostart") {
                 return Ok(());
             }

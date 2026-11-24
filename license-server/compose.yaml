@@ -3,7 +3,7 @@ services:
     build:
       context: ..
       dockerfile: license-server/Dockerfile
-    image: encrypt-assets-license-manager:2.7.0
+    image: encrypt-assets-license-manager:2.7.1
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "assets-license-server", "--healthcheck"]

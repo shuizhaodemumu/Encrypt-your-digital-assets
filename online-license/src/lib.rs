@@ -120,7 +120,7 @@ fn request(p: &Policy, content: &str, device: &str, license: &Value) -> Result<G
     let nonce = uuid::Uuid::new_v4().simple().to_string();
     let r = client_with_ca(p.server_ca.as_deref())?
         .post(format!("{}/api/lease", p.server_url.trim_end_matches('/')))
-        .json(&json!({"content_id":content,"device_id":device,"license":license,"nonce":nonce}))
+        .json(&json!({"content_id":content,"device_id":device,"device_name":std::env::var("COMPUTERNAME").ok(),"license":license,"nonce":nonce}))
         .send()?;
     ensure!(
         r.status().is_success(),

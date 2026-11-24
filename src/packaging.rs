@@ -276,7 +276,6 @@ mod tests {
             let mut info = catalog.info.clone();
             info.kind = kind.into();
             assert!(!crate::watchdog::enabled_for(&info));
-            assert!(crate::watchdog::enable_startup(Path::new("nonexistent.exe"), &info).is_err());
             assert!(crate::watchdog::Client::start(Path::new("nonexistent.exe"), &info).is_err());
         }
         for kind in ["media", "image"] {

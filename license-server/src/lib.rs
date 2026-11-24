@@ -112,6 +112,7 @@ impl App {
    CREATE TABLE IF NOT EXISTS contents(id TEXT PRIMARY KEY,group_id TEXT NOT NULL REFERENCES groups(id),name TEXT NOT NULL,platform TEXT NOT NULL,issuer TEXT NOT NULL,policy TEXT NOT NULL,enabled INTEGER NOT NULL DEFAULT 1);
    CREATE TABLE IF NOT EXISTS licenses(id TEXT PRIMARY KEY,content_id TEXT NOT NULL REFERENCES contents(id),device TEXT NOT NULL,hash TEXT NOT NULL,activated INTEGER NOT NULL,expires INTEGER NOT NULL,last_seen INTEGER NOT NULL,enabled INTEGER NOT NULL DEFAULT 1);
    CREATE TABLE IF NOT EXISTS audit(id INTEGER PRIMARY KEY AUTOINCREMENT,time INTEGER NOT NULL,action TEXT NOT NULL,target TEXT NOT NULL);
+   CREATE TABLE IF NOT EXISTS license_names(license_id TEXT PRIMARY KEY REFERENCES licenses(id) ON DELETE CASCADE, name TEXT NOT NULL);
    CREATE TABLE IF NOT EXISTS clock(id INTEGER PRIMARY KEY CHECK(id=1),last INTEGER NOT NULL);")?;
         Ok(Self {
             db: Arc::new(Mutex::new(db)),
@@ -244,6 +245,11 @@ impl App {
                 }
                 json!({"ok":true})
             }
+            "delete_group" => {
+                let id = bounded(&v, "id", 80)?;
+                ensure!(tx.execute("DELETE FROM groups WHERE id=? AND NOT EXISTS (SELECT 1 FROM contents WHERE group_id=groups.id)",[id])? == 1,"只能删除空组；已有内容的组可暂停授权");
+                json!({"ok":true})
+            }
             "set_enabled" => {
                 let table = match field(&v, "scope")? {
                     "group" => "groups",
@@ -293,8 +299,8 @@ impl App {
         )?;
         for r in q.query_map([],|r|Ok(json!({"id":r.get::<_,String>(0)?,"group_id":r.get::<_,String>(1)?,"name":r.get::<_,String>(2)?,"platform":r.get::<_,String>(3)?,"enabled":r.get::<_,bool>(4)?})))?{contents.push(r?);}
         let mut licenses = vec![];
-        let mut q=db.prepare("SELECT id,content_id,device,activated,expires,last_seen,enabled FROM licenses ORDER BY last_seen DESC LIMIT 1000")?;
-        for r in q.query_map([],|r|Ok(json!({"id":r.get::<_,String>(0)?,"content_id":r.get::<_,String>(1)?,"device":r.get::<_,String>(2)?,"activated":r.get::<_,i64>(3)?,"expires":r.get::<_,i64>(4)?,"last_seen":r.get::<_,i64>(5)?,"enabled":r.get::<_,bool>(6)?})))?{licenses.push(r?);}
+        let mut q=db.prepare("SELECT id,content_id,device,activated,expires,last_seen,enabled,(SELECT name FROM license_names WHERE license_id=licenses.id) FROM licenses ORDER BY last_seen DESC LIMIT 1000")?;
+        for r in q.query_map([],|r|Ok(json!({"id":r.get::<_,String>(0)?,"content_id":r.get::<_,String>(1)?,"device":r.get::<_,String>(2)?,"activated":r.get::<_,i64>(3)?,"expires":r.get::<_,i64>(4)?,"device_name":r.get::<_,Option<String>>(7)?,"last_seen":r.get::<_,i64>(5)?,"enabled":r.get::<_,bool>(6)?})))?{licenses.push(r?);}
         let mut audit = vec![];
         let mut q =
             db.prepare("SELECT time,action,target FROM audit ORDER BY id DESC LIMIT 100")?;
@@ -388,6 +394,16 @@ impl App {
             "UPDATE licenses SET last_seen=?1 WHERE id=?2",
             params![time, id],
         )?;
+        if let Some(name) = v["device_name"]
+            .as_str()
+            .map(str::trim)
+            .filter(|s| !s.is_empty() && s.len() <= 255 && !s.chars().any(char::is_control))
+        {
+            tx.execute(
+                "INSERT OR REPLACE INTO license_names(license_id,name) VALUES(?,?)",
+                params![id, name],
+            )?;
+        }
         tx.commit()?;
         let body = json!({"version":1,"nonce":nonce,"content_id":content,"device_id":device,"license_id":id,"group_id":group,"allowed":allowed,"server_time":time,"activated_at":activated,"expires_at":expires,"lease_until":if allowed {(time+120).min(expires)}else{time}});
         let bytes = serde_json::to_vec(&body)?;
@@ -454,6 +470,28 @@ mod tests {
     }
     fn body(v: Value) -> Value {
         serde_json::from_slice(&B64.decode(v["body"].as_str().unwrap()).unwrap()).unwrap()
+    }
+    #[test]
+    fn management_tracks_content_device_and_empty_group_removal() {
+        let (app, _, body, mut request) = setup();
+        let group = &body["Online"]["group_id"];
+        assert!(app.admin(json!({"op":"delete_group","id":group})).is_err());
+        let empty = app
+            .admin(json!({"op":"create_group","name":"empty"}))
+            .unwrap();
+        app.admin(json!({"op":"delete_group","id":empty["id"]}))
+            .unwrap();
+        request["device_name"] = json!("演示电脑");
+        app.lease(request, 1050).unwrap();
+        let snapshot = app.list().unwrap();
+        assert_eq!(snapshot["groups"].as_array().unwrap().len(), 1);
+        assert_eq!(snapshot["contents"][0]["group_id"], *group);
+        assert_eq!(
+            snapshot["licenses"][0]["content_id"],
+            snapshot["contents"][0]["id"]
+        );
+        assert_eq!(snapshot["licenses"][0]["device_name"], "演示电脑");
+        assert_eq!(snapshot["licenses"][0]["expires"], 1050 + 86400);
     }
     #[test]
     fn activation_is_server_owned_and_cannot_reset() {

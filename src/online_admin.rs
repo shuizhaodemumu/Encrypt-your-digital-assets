@@ -7,6 +7,8 @@ pub struct Config {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub server_ca: Option<String>,
     pub enabled: bool,
+    #[serde(default)]
+    pub explicit_offline: bool,
     pub url: String,
     pub token: String,
     pub policy: Option<online_license::Policy>,
@@ -30,7 +32,13 @@ pub fn save(c: &Config) -> Result<()> {
 }
 pub fn ready() -> bool {
     load()
-        .map(|c| !c.enabled || c.policy.is_some())
+        .map(|c| {
+            if c.enabled {
+                c.policy.is_some()
+            } else {
+                c.explicit_offline
+            }
+        })
         .unwrap_or(false)
 }
 pub fn selected_policy() -> Result<Option<online_license::Policy>> {

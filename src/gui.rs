@@ -46,7 +46,6 @@ const RENEW: usize = 114;
 const EXPORT: usize = 115;
 const FULLSCREEN: usize = 116;
 const CLOSE_PLAYER: usize = 117;
-const STARTUP_REPAIR: usize = 118;
 const LANGUAGE_CHINESE: usize = 201;
 const LANGUAGE_ENGLISH: usize = 202;
 const LANGUAGE_TOGGLE: usize = 203;
@@ -102,7 +101,6 @@ pub struct App {
     dock_until: Instant,
     cursor: POINT,
     fullscreen_requested: bool,
-    startup_notice: Option<String>,
 }
 fn set_text(hwnd: isize, s: &str) {
     unsafe {
@@ -504,7 +502,6 @@ impl App {
                 dock_until: Instant::now(),
                 cursor: POINT { x: -1, y: -1 },
                 fullscreen_requested: true,
-                startup_notice: None,
             });
             let h = CreateWindowExW(
                 0,
@@ -1467,33 +1464,16 @@ impl App {
         self.clear_buttons();
         self.add(crate::i18n::text("安装到本机"), INSTALL, 20, 20, 160);
         self.add(crate::i18n::text("导入新授权"), RENEW, 190, 20, 160);
-        if crate::watchdog::enabled_for(&info) {
-            self.add(
-                crate::i18n::text("修复自启动"),
-                STARTUP_REPAIR,
-                360,
-                20,
-                150,
-            );
-        } else {
-            crate::watchdog::disable_startup(&info)?;
-        }
         self.open_reader(Reader::new(package, key)?, self.auth.clone(), &info)?;
         if info.version == 2 && crate::watchdog::enabled_for(&info) {
-            self.startup_notice = crate::watchdog::enable_startup(&self.exe, &info)
-                .err()
-                .map(|e| format!("自动启动未设置：{e}。可点击“修复自启动”重试。"));
             self.watch = Some(crate::watchdog::Client::start(&self.exe, &info)?);
         }
-        self.status(if info.kind == "presentation" {crate::i18n::text("内容已激活，正在启动 PowerPoint 全屏放映；仅放映、不提供编辑和保存，按 Esc 结束本次放映。")} else {crate::i18n::text("内容已激活，运行监测与登录自动启动已启用。视频自动全屏循环，授权到期停止。")});
+        self.status(if info.kind == "presentation" {crate::i18n::text("内容已激活，正在启动 PowerPoint 全屏放映；仅放映、不提供编辑和保存，按 Esc 结束本次放映。")} else {crate::i18n::text("内容已激活，运行监测已启用。视频自动全屏循环，授权到期停止。")});
         if !crate::watchdog::enabled_for(&info) {
             self.status("文档已激活；未启用开机自启动和看门狗。");
         }
         if matches!(info.kind.as_str(), "executable" | "application") {
             self.status("正在解密并启动程序；无看门狗、全屏或自启动。关闭授权窗口会结束程序。");
-        }
-        if let Some(notice) = &self.startup_notice {
-            self.status(notice);
         }
         Ok(())
     }
@@ -1531,6 +1511,7 @@ impl App {
             ONLINE_OFF => {
                 let mut c = crate::online_admin::load()?;
                 c.enabled = false;
+                c.explicit_offline = true;
                 crate::online_admin::save(&c)?;
                 self.status("离线模式：仅影响之后新生成的内容，已生成的联网内容仍接受监管。");
             }
@@ -1928,13 +1909,6 @@ impl App {
                 self.stop();
                 unsafe {
                     DestroyWindow(self.hwnd);
-                }
-            }
-            STARTUP_REPAIR => {
-                if let Role::Viewer(info) = &self.role {
-                    let target = crate::watchdog::enable_startup(&self.exe, info)?;
-                    self.startup_notice = None;
-                    self.status(&format!("登录自动播放已开启：{}", target.display()));
                 }
             }
             INSTALL => {
@@ -2338,7 +2312,7 @@ impl App {
                     },
                 };
                 let label = wide(if matches!(self.role, Role::Administrator) {
-                    "请在 NAS 在线平台创建组，再在此连接并选择组；发行者私钥不上传 NAS。\n切换离线模式不会解除已有内容的在线监管。"
+                    "打包前请连接管理器，选中组并保存；或手动切换离线模式；发行者私钥不上传 NAS。\n切换离线模式不会解除已有内容的在线监管。"
                 } else if matches!(&self.role,Role::Viewer(i) if matches!(i.kind.as_str(),"executable"|"application"))
                 {
                     "Windows 程序授权运行 / EXE 与 DLL 加密\n导入 LIC 后启动程序；不强制全屏、不设置自启动、不自动重启。\n请保留此授权窗口；关闭窗口或授权到期会结束程序。\n需要保留的文件请保存到程序临时目录之外。"
