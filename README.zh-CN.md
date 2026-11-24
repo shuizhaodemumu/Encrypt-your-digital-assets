@@ -7,7 +7,7 @@
 | 版本 | 下载 | 源码与使用说明 |
 | --- | --- | --- |
 | Windows x64 · 2.6.0 | [Windows 便携包](https://github.com/shuizhaodemumu/Encrypt-your-digital-assets/releases/tag/v2.6.0) | 仓库根目录；下文为 Windows 说明 |
-| Windows online · 2.7.0-preview.1 | [Windows 联网验证版 ZIP](https://github.com/shuizhaodemumu/Encrypt-your-digital-assets/releases/tag/windows-online-v2.7.0-preview.1) | [独立分支 windows-online](https://github.com/shuizhaodemumu/Encrypt-your-digital-assets/tree/windows-online) · [使用说明](https://github.com/shuizhaodemumu/Encrypt-your-digital-assets/blob/windows-online/docs/WINDOWS-ONLINE.zh-CN.md) |
+| Windows 联网正式版 · 2.7.0 | [Windows ZIP + Docker](https://github.com/shuizhaodemumu/Encrypt-your-digital-assets/releases/tag/windows-online-v2.7.0) | [Server source](https://github.com/shuizhaodemumu/Encrypt-your-digital-assets/tree/windows-online/license-server) · [部署与使用](https://github.com/shuizhaodemumu/Encrypt-your-digital-assets/blob/windows-online/docs/WINDOWS-ONLINE.zh-CN.md) |
 | Ubuntu x86_64 · 0.1.3 | [DEB 安装包 / 自带运行库 RUN](https://github.com/shuizhaodemumu/Encrypt-your-digital-assets/releases/tag/ubuntu-v0.1.3) | [Ubuntu 使用与构建](ubuntu/README.zh-CN.md) · [验证范围](ubuntu/VALIDATION.md) |
 | 安卓 ARM64 · 0.1.0 预览版 | [安卓 APK + 独立 Windows 授权工具](https://github.com/shuizhaodemumu/Encrypt-your-digital-assets/releases/tag/android-v0.1.0-preview) | [安卓使用与构建](android/README.md) · [验证范围](android/VALIDATION.md) |
 
